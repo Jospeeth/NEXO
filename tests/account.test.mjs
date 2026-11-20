@@ -241,9 +241,10 @@ test('la consulta de cuentas resuelve una base recién creada sin movimientos ni
   const { fourthMigration } = await import('../src/infrastructure/storage/migration-v4.ts');
   const { fifthMigration } = await import('../src/infrastructure/storage/migration-v5.ts');
   const { sixthMigration } = await import('../src/infrastructure/storage/migration-v6.ts');
+  const { seventhMigration } = await import('../src/infrastructure/storage/migration-v7.ts');
   const db = new DatabaseSync(':memory:');
   try {
-    db.exec(firstMigration + secondMigration + thirdMigration + fourthMigration + fifthMigration + sixthMigration);
+    db.exec(firstMigration + secondMigration + thirdMigration + fourthMigration + fifthMigration + sixthMigration + seventhMigration);
     const query = db.prepare(selectAccountsWithBalances);
     assert.deepEqual(query.all('2026-11-01', '2026-11-20'), []);
     db.exec("INSERT INTO accounts(name,kind,currency,openingMinor) VALUES('Cash','cash','COP',0)");

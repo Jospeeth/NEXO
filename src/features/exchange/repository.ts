@@ -59,3 +59,38 @@ export function refreshExchangeRate() {
   pending ??= requestIfDue().catch((): RateStatus => 'failed').finally(() => { pending = undefined; });
   return pending;
 }
+
+const manualName = 'nexo.exchange.manual';
+const currencyName = 'nexo.exchange.currency';
+
+export async function readExchangeSettings() {
+  const [provider, rawManual, currency, key] = await Promise.all([
+    readQuote(), SecureStore.getItemAsync(manualName),
+    SecureStore.getItemAsync(currencyName), SecureStore.getItemAsync(keyName),
+  ]);
+  let manual: ExchangeQuote | null = null;
+  if (rawManual) {
+    try {
+      const parsed: unknown = JSON.parse(rawManual);
+      if (isQuote(parsed)) manual = parsed;
+    } catch {
+      // A malformed preference does not prevent use of the provider cache.
+    }
+  }
+  const primaryCurrency: 'USD' | 'COP' | null = currency === 'USD' || currency === 'COP' ? currency : null;
+  return { quote: manual ?? provider, manual: manual !== null, currency: primaryCurrency, hasKey: Boolean(key) };
+}
+
+export async function saveManualRate(rate: number | null) {
+  if (rate === null) {
+    await SecureStore.deleteItemAsync(manualName, options);
+    return;
+  }
+  const quote = { copPerUsd: rate, quotedAt: Date.now() };
+  if (!isQuote(quote)) throw new Error('invalid manual rate');
+  await SecureStore.setItemAsync(manualName, JSON.stringify(quote), options);
+}
+
+export function savePrimaryCurrency(currency: 'USD' | 'COP') {
+  return SecureStore.setItemAsync(currencyName, currency, options);
+}

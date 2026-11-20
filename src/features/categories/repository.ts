@@ -3,7 +3,7 @@ import { localDay } from '../../shared/date/local-day';
 import { database } from '../../infrastructure/storage/database';
 import type { Category, CategoryKind } from './category';
 
-export async function loadCategories(kind?: CategoryKind): Promise<Category[]> {
+export async function loadCategories(kind?: CategoryKind, range?: { start: string; end: string }): Promise<Category[]> {
   const today = localDay();
   return (await database()).getAllAsync<Category>(`
     SELECT c.*, COALESCE((
@@ -16,7 +16,7 @@ export async function loadCategories(kind?: CategoryKind): Promise<Category[]> {
     FROM categories c
     WHERE (? IS NULL OR c.kind = ? OR c.kind = 'both')
     ORDER BY c.name
-  `, today.slice(0, 7) + '-01', today, kind ?? null, kind ?? null);
+  `, range?.start ?? today.slice(0, 7) + '-01', range?.end ?? today, kind ?? null, kind ?? null);
 }
 
 type CategoryInput = Pick<Category, 'name' | 'emoji' | 'kind' | 'budgetMinor' | 'budgetCurrency'>;

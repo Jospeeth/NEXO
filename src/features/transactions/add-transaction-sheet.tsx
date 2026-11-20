@@ -1,3 +1,5 @@
+import { cardCycleDates } from '../accounts/card-cycle';
+import { InstallmentPreview } from '../installments/installment-preview';
 import { useLanguage } from '../../shared/language/language';
 import { DatePicker, Pill } from '../../shared/ui/date-controls';
 import { localDay } from '../../shared/date/local-day';
@@ -63,6 +65,7 @@ export function AddTransactionSheet({
   // 6. Date (defaults to today)
   const [transactionDate, setTransactionDate] = useState(initial?.transactionDate ?? localDay());
 
+  const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [initialFailed, setInitialFailed] = useState(false);
@@ -95,6 +98,8 @@ export function AddTransactionSheet({
   }, [initial?.accountId, loadAttempt]);
 
   const selectedAccount = accounts.find(a => a.id === selectedAccountId);
+  const principal = parseOpening(amountText) ?? 0;
+  const showInstallments = kind === 'expense' && selectedAccount?.kind === 'credit_card';
   const filteredCategories = categories.filter(c => c.kind === kind || c.kind === 'both');
 
   async function handleQuickCreateAccount() {
@@ -398,6 +403,18 @@ export function AddTransactionSheet({
                 )}
               </View>
 
+              {showInstallments && selectedAccount && (
+                <View style={{ gap: spacing.sm }}>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>{t('Detalles de cuotas')}</Text>
+                  <Pill label={t('Simular compra a cuotas')} disabled={principal <= 0} onPress={() => setPreview(true)} />
+                  {principal <= 0 && <Text style={{ color: colors.secondaryText }}>{t('Ingresa el importe para simular las cuotas.')}</Text>}
+                  {preview && <InstallmentPreview principal={principal} currency={selectedAccount.currency}
+                    purchaseDate={transactionDate}
+                    firstDueDate={selectedAccount.statementDay && selectedAccount.paymentDay
+                      ? cardCycleDates(transactionDate, selectedAccount.statementDay, selectedAccount.paymentDay).payment : undefined}
+                    onClose={() => setPreview(false)} />}
+                </View>
+              )}
               {/* STEP 5: Select Category (EMOJIS) */}
               <View style={styles.formSection}>
                 <View style={styles.labelRowWithAction}>

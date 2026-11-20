@@ -7,6 +7,7 @@ import { thirdMigration } from './migration-v3';
 import { sixthMigration } from './migration-v6';
 import { fifthMigration } from './migration-v5';
 import { fourthMigration } from './migration-v4';
+import { seventhMigration } from './migration-v7';
 import { unlock } from './unlock';
 
 const name = 'nexo-demo.db';
@@ -38,17 +39,18 @@ async function initialize() {
     const row = await db.getFirstAsync<{user_version: number}>('PRAGMA user_version');
     await db.execAsync('PRAGMA foreign_keys = ON');
     const version = row?.user_version;
-    if (version === undefined || version < 0 || version > 6) {
+    if (version === undefined || version < 0 || version > 7) {
       throw new Error('Unsupported schema');
     }
-    if (version < 6) {
+    if (version < 7) {
       await db.withTransactionAsync(async () => {
         if (version === 0) await db.execAsync(firstMigration);
         if (version <= 1) await db.execAsync(secondMigration);
         if (version <= 2) await db.execAsync(thirdMigration);
         if (version <= 3) await db.execAsync(fourthMigration);
         if (version <= 4) await db.execAsync(fifthMigration);
-        await db.execAsync(sixthMigration);
+        if (version <= 5) await db.execAsync(sixthMigration);
+        await db.execAsync(seventhMigration);
       });
     }
     return db;

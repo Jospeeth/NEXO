@@ -11,6 +11,7 @@ interface AccountCardProps {
   onPress?: () => void;
   variant?: 'hero' | 'carousel' | 'compact';
   style?: StyleProp<ViewStyle>;
+  period?: { balanceMinor: number | null; budgetSpent: number; historical: boolean };
 }
 
 export function AccountCard({
@@ -18,13 +19,14 @@ export function AccountCard({
   onPress,
   variant = 'carousel',
   style,
+  period,
 }: AccountCardProps) {
   const { t } = useLanguage();
   const { colors, isDark } = useTheme();
 
-  const formattedBalance = displayBalance({
+  const formattedBalance = period?.balanceMinor === null ? t("Saldo histórico no disponible") : displayBalance({
     currency: account.currency,
-    openingMinor: account.balanceMinor,
+    openingMinor: period?.balanceMinor ?? account.balanceMinor,
   });
 
   const custom = normalizeAccountColor(account.color ?? '');
@@ -32,7 +34,7 @@ export function AccountCard({
   const kindLabel = t(accountKinds[account.kind] ?? account.kind);
 
   const budgetLabel = account.kind === 'credit_card' && account.budgetMinor != null
-    ? `${t("Gastado este mes")}: ${displayBalance({ currency: account.currency, openingMinor: account.monthSpentMinor ?? 0 })} / ${displayBalance({ currency: account.currency, openingMinor: account.budgetMinor })}`
+    ? `${t(period?.historical ? "Gasto del período · Límite vigente" : "Gastado este mes")}: ${displayBalance({ currency: account.currency, openingMinor: period?.budgetSpent ?? account.monthSpentMinor ?? 0 })} / ${displayBalance({ currency: account.currency, openingMinor: account.budgetMinor })}`
     : null;
 
   if (variant === 'compact') {

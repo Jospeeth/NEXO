@@ -1,3 +1,5 @@
+import { BackupSection } from '../backup/backup-section';
+import { ExchangeRateCard } from '../exchange/rate-card';
 import { ImportSection } from '../import/import-section';
 
 import { useLanguage } from '../../shared/language/language';
@@ -238,7 +240,9 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        <ExchangeRateCard />
         <ExportSection />
+        <BackupSection onRestored={refreshCategories} />
         <ImportSection onImported={refreshCategories} />
 
         {/* Categories Management (Edición de categorías con EMOJIS) */}
@@ -516,7 +520,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.page,
-    paddingBottom: spacing.xxxl,
+    paddingBottom: 120,
     gap: spacing.xl,
   },
   header: {

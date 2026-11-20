@@ -32,6 +32,8 @@ export type AccountKind = keyof typeof accountKinds;
 
 export interface AccountDetails extends Account {
   budgetMinor?: number | null;
+  statementDay?: number | null;
+  paymentDay?: number | null;
   color?: string | null;
   name: string;
   kind: AccountKind;

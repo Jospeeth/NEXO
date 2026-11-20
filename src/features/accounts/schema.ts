@@ -33,7 +33,7 @@ export const secondMigration = `
 `;
 
 export const selectAccountsWithBalances = `
-    SELECT a.id, a.name, a.currency, a.openingMinor, a.color, a.budgetMinor,
+    SELECT a.id, a.name, a.currency, a.openingMinor, a.color, a.budgetMinor, a.statementDay, a.paymentDay,
            CASE WHEN a.isCreditCard = 1 THEN 'credit_card' ELSE a.kind END AS kind,
            COALESCE(SUM(CASE
              WHEN m.kind = 'expense' AND m.transferGroup IS NULL AND m.excludedFromReports = 0

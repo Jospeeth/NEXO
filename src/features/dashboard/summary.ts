@@ -10,7 +10,7 @@ export function summarize(
   const available = matchingAccounts.reduce((sum, account) => sum + account.balanceMinor, 0);
   // Account opening amounts have no effective date in the current account flow.
   let openingBalance = matchingAccounts.reduce((sum, account) => sum + account.openingMinor, 0);
-  const expenses = new Map<string, number>();
+  const expenses = new Map<number | null, { label: string; minor: number }>();
   let income = 0;
   let expense = 0;
   let netCashFlow = 0;
@@ -33,7 +33,8 @@ export function summarize(
     } else {
       expense += item.amountMinor;
       const label = `${item.categoryEmoji ?? '📦'} ${item.categoryName ?? 'Sin categoría'}`;
-      expenses.set(label, (expenses.get(label) ?? 0) + item.amountMinor);
+      const categoryId = item.categoryId ?? null;
+      expenses.set(categoryId, { label, minor: (expenses.get(categoryId)?.minor ?? 0) + item.amountMinor });
     }
   }
   const futurePeriod = period > today.slice(0, 7);

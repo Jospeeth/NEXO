@@ -19,10 +19,12 @@ function validatedColor(color: string | null | undefined) {
 
 export async function createAccount(account: AccountDetails): Promise<number> {
   const result = await (await database()).runAsync(
-    'INSERT INTO accounts(name, kind, currency, openingMinor, color, isCreditCard, budgetMinor) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO accounts(name, kind, currency, openingMinor, color, isCreditCard, budgetMinor, statementDay, paymentDay) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     account.name.trim(), account.kind === 'credit_card' ? 'credit' : account.kind,
     account.currency, account.openingMinor, validatedColor(account.color), account.kind === 'credit_card' ? 1 : 0,
-    account.kind === 'credit_card' ? account.budgetMinor ?? null : null
+    account.kind === 'credit_card' ? account.budgetMinor ?? null : null,
+    account.kind === 'credit_card' ? account.statementDay ?? null : null,
+    account.kind === 'credit_card' ? account.paymentDay ?? null : null
   );
   return result.lastInsertRowId;
 }
@@ -60,6 +62,15 @@ export async function updateAccount(
   if (budget !== undefined) {
     fields.push('budgetMinor = ?');
     values.push(budget);
+  }
+
+  const isChangingToNonCard = input.kind !== undefined && input.kind !== 'credit_card';
+  for (const field of ['statementDay', 'paymentDay'] as const) {
+    const value = isChangingToNonCard ? null : input[field];
+    if (value !== undefined) {
+      fields.push(field + ' = ?');
+      values.push(value);
+    }
   }
 
   if (fields.length === 0) return;

@@ -9,6 +9,7 @@ import { thirdMigration } from '../src/infrastructure/storage/migration-v3.ts';
 import { fourthMigration } from '../src/infrastructure/storage/migration-v4.ts';
 import { fifthMigration } from '../src/infrastructure/storage/migration-v5.ts';
 import { sixthMigration } from '../src/infrastructure/storage/migration-v6.ts';
+import { seventhMigration } from '../src/infrastructure/storage/migration-v7.ts';
 
 const header = 'Date,Type,Amount,Currency,Account,Category,Note,Transfer direction,Excluded from reports,Excluded from cash flow,ID,Account ID,Category ID,Transfer group,Split parent,Parent ID';
 const income = '2026-11-20T01:00:00.000Z,income,100.05,COP,Account A,Salary,"Hello, ""world""",,false,false,m1,a1,c1,,false,';
@@ -46,7 +47,7 @@ test('reemplaza el historial de forma atómica y las transferencias no alteran e
   };
   try {
     sqlite.exec('PRAGMA foreign_keys = ON');
-    sqlite.exec(firstMigration + secondMigration + thirdMigration + fourthMigration + fifthMigration + sixthMigration);
+    sqlite.exec(firstMigration + secondMigration + thirdMigration + fourthMigration + fifthMigration + sixthMigration + seventhMigration);
     sqlite.exec("INSERT INTO accounts(name,kind,currency,openingMinor) VALUES('Old account','checking','COP',500)");
     const plan = parse(income, outgoing, incoming);
     const broken = { ...plan, movements: [...plan.movements, { ...plan.movements[0], accountKey: 'missing' }] };
@@ -84,7 +85,7 @@ test('una nueva transferencia registra ambos lados y no cambia el total ni el fl
     runSync: (sql, ...params) => sqlite.prepare(sql).run(...params),
   };
   try {
-    sqlite.exec(firstMigration + secondMigration + thirdMigration + fourthMigration + fifthMigration + sixthMigration);
+    sqlite.exec(firstMigration + secondMigration + thirdMigration + fourthMigration + fifthMigration + sixthMigration + seventhMigration);
     sqlite.exec(`INSERT INTO accounts(id, name, kind, currency, openingMinor)
       VALUES (1, 'A', 'checking', 'COP', 5000), (2, 'B', 'savings', 'COP', 2000), (3, 'C', 'cash', 'USD', 0)`);
     const input = { fromId: 1, toId: 2, amountMinor: 1000, date: '2026-11-20', note: '' };

@@ -1,111 +1,95 @@
+import { useState } from 'react';
+import { Text, TextInput, View } from 'react-native';
 import { useLanguage } from '../../shared/language/language';
-import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
-import { AppState, Button, Text, TextInput, View } from 'react-native';
 import { radius, spacing, useTheme } from '../../shared/theme/theme';
-import { isStale, type ExchangeQuote } from './rate';
-import { readQuote, refreshExchangeRate, saveExchangeKey, type RateStatus } from './repository';
+import { Pill } from '../../shared/ui/date-controls';
+import { refreshExchangeRate, saveExchangeKey, saveManualRate, savePrimaryCurrency } from './repository';
+import { useExchange } from './use-exchange';
 
-interface Props {
-  onQuoteChange?: (data: { quote: ExchangeQuote | null; stale: boolean }) => void;
-}
-
-export function ExchangeRateCard({ onQuoteChange }: Props) {
+export function ExchangeRateCard() {
   const { t, locale } = useLanguage();
   const { colors } = useTheme();
-  const [quote, setQuote] = useState<ExchangeQuote | null>(null);
-  const [checkedAt, setCheckedAt] = useState(Date.now);
-  const [status, setStatus] = useState<RateStatus | 'loading'>('loading');
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [keyError, setKeyError] = useState(false);
+  const { settings, reload } = useExchange();
+  const [key, setKey] = useState('');
+  const [rate, setRate] = useState('');
+  const [editor, setEditor] = useState<'key' | 'rate' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const quote = settings?.quote;
 
-  const refresh = useCallback(async (active: () => boolean = () => true) => {
+  async function run(action: () => Promise<void>) {
+    if (busy) return;
+    setBusy(true);
+    setMessage('');
     try {
-      const stored = await readQuote();
-      if (active()) {
-        setQuote(stored);
-        const now = Date.now();
-        setCheckedAt(now);
-        onQuoteChange?.({ quote: stored, stale: stored !== null && isStale(stored, now) });
-      }
-      const result = await refreshExchangeRate();
-      const latest = result === 'updated' ? await readQuote() : stored;
-      if (active()) {
-        setQuote(latest);
-        const now = Date.now();
-        setCheckedAt(now);
-        onQuoteChange?.({ quote: latest, stale: latest !== null && isStale(latest, now) });
-        setStatus(previous => result === 'scheduled' && previous === 'failed' ? previous : result);
-      }
+      await action();
+      await reload();
     } catch {
-      if (active()) setStatus('failed');
-    }
-  }, [onQuoteChange]);
-
-  useFocusEffect(useCallback(() => {
-    let focused = true;
-    const poll = () => {
-      if (AppState.currentState === 'active') void refresh(() => focused);
-    };
-    poll();
-    const timer = setInterval(poll, 60_000);
-    const subscription = AppState.addEventListener('change', poll);
-    return () => {
-      focused = false;
-      clearInterval(timer);
-      subscription.remove();
-    };
-  }, [refresh]));
-
-  async function configure() {
-    if (!draft.trim() || saving) return;
-    setSaving(true);
-    setKeyError(false);
-    try {
-      await saveExchangeKey(draft);
-      setDraft('');
-      setEditing(false);
-      await refresh();
-    } catch {
-      setKeyError(true);
+      setMessage('No se pudo guardar o actualizar la configuración.');
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
+  async function refresh() {
+    const result = await refreshExchangeRate();
+    if (result === 'scheduled') setMessage('Ya se consultó al proveedor en esta franja.');
+    if (result === 'unconfigured') setMessage('Configura tu clave de Exchange Rates API.');
+    if (result === 'failed') setMessage('No se pudo actualizar la tasa.');
+  }
+
+  const inputStyle = { minHeight: 44, color: colors.text, borderBottomWidth: 1, borderColor: colors.border };
   return (
-    <View style={{ padding: spacing.lg, borderRadius: radius.card, backgroundColor: colors.surface, gap: 8 }}>
-      <Text accessibilityRole="header" style={{ color: colors.text, fontWeight: '700' }}>{t("Tasa USD/COP")}</Text>
-      {quote && <>
-        <Text style={{ color: colors.primary, fontWeight: '600' }}>
-          1 USD = {new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(quote.copPerUsd)} COP
-        </Text>
-        <Text style={{ color: colors.secondaryText }}>
-          {t("Cotización de APILayer ·")} {new Date(quote.quotedAt).toLocaleString(locale, { timeZone: 'America/Bogota' })}
-          {isStale(quote, checkedAt) ? " · " + t("Desactualizada") : ""}
-        </Text>
-      </>}
-      {!quote && status === 'loading' && <Text style={{ color: colors.secondaryText }}>{t("Consultando…")}</Text>}
-      {!quote && status === 'scheduled' && <Text style={{ color: colors.secondaryText }}>{t("Próximo intento en la siguiente franja.")}</Text>}
-      {status === 'unconfigured' && <Text style={{ color: colors.secondaryText }}>{t("Configura tu clave de Exchange Rates API.")}</Text>}
-      {status === 'failed' && <Text accessibilityRole="alert" style={{ color: colors.secondaryText }}>
-        {t("No se pudo actualizar. Revisa la clave, la conexión y el acceso HTTPS de tu plan.")}
+    <View style={{ padding: spacing.lg, borderRadius: radius.card, backgroundColor: colors.surface, gap: spacing.sm }}>
+      <Text accessibilityRole="header" style={{ color: colors.text, fontWeight: '700' }}>{t('Moneda y tasas de cambio')}</Text>
+      <Text style={{ color: colors.secondaryText }}>{t('Moneda principal')}</Text>
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        {(['USD', 'COP'] as const).map(currency => <Pill key={currency} label={currency}
+          selected={settings?.currency === currency} disabled={busy}
+          onPress={() => { void run(() => savePrimaryCurrency(currency)); }} />)}
+      </View>
+      <Text style={{ color: colors.primary, fontWeight: '700' }}>
+        {quote ? `1 USD = ${new Intl.NumberFormat(locale, { maximumFractionDigits: 4 }).format(quote.copPerUsd)} COP` : t('Sin cotización USD/COP')}
+      </Text>
+      {!!quote && <Text style={{ color: colors.secondaryText }}>
+        {settings?.manual ? t('Tasa manual') : 'APILayer'} · {t('Última actualización')} · {new Date(quote.quotedAt).toLocaleString(locale)}
       </Text>}
-      {quote && !editing && <Button title={t("Comprobar actualización")} color={colors.primary}
-        onPress={() => { void refresh(); }} />}
-      {editing ? <>
-        <TextInput accessibilityLabel={t("Clave de Exchange Rates API")} placeholder={t("Clave de APILayer")}
-          placeholderTextColor={colors.secondaryText} value={draft} onChangeText={setDraft}
-          autoCapitalize="none" autoCorrect={false} secureTextEntry editable={!saving}
-          style={{ minHeight: 44, color: colors.text, borderBottomWidth: 1, borderColor: colors.border }} />
-        {keyError && <Text accessibilityRole="alert" style={{ color: colors.expense }}>{t("No se pudo guardar la clave.")}</Text>}
-        <Button color={colors.primary} title={t("Guardar clave")} disabled={saving || !draft.trim()} onPress={configure} />
-        <Button color={colors.primary} title={t("Cancelar")} disabled={saving}
-          onPress={() => { setDraft(''); setKeyError(false); setEditing(false); }} />
-      </> : (status === 'unconfigured' || status === 'failed' || (!quote && status === 'scheduled')) &&
-        <Button color={colors.primary} title={t("Configurar clave")} onPress={() => setEditing(true)} />}
+      <Pill label={t('Actualizar tasa')} disabled={busy || settings?.manual} onPress={() => { void run(refresh); }} />
+      <Pill label={t('Tasa manual')} disabled={busy} onPress={() => {
+        setEditor('rate');
+        setKey('');
+        setRate(settings?.manual && quote ? String(quote.copPerUsd) : '');
+      }} />
+      {settings?.manual && <Pill label={t('Usar tasa del proveedor')} disabled={busy}
+        onPress={() => { void run(async () => { await saveManualRate(null); setEditor(null); }); }} />}
+      <Pill label={settings?.hasKey ? `••••••••  ${t('Cambiar clave')}` : t('Configurar clave')}
+        disabled={busy} onPress={() => { setEditor('key'); setKey(''); }} />
+      {editor === 'key' && <>
+        <TextInput accessibilityLabel={t('Clave de Exchange Rates API')} secureTextEntry
+          autoCapitalize="none" autoCorrect={false} value={key} onChangeText={setKey} editable={!busy} style={inputStyle} />
+        <Pill label={t('Guardar clave')} disabled={busy || !key.trim()} onPress={() => { void run(async () => {
+          await saveExchangeKey(key);
+          setKey('');
+          setEditor(null);
+          if (!settings?.manual) await refresh();
+        }); }} />
+      </>}
+      {editor === 'rate' && <>
+        <TextInput accessibilityLabel={t('COP por USD')} keyboardType="decimal-pad" value={rate}
+          onChangeText={setRate} editable={!busy} style={inputStyle} />
+        <Pill label={t('Guardar tasa')} disabled={busy} onPress={() => {
+          const raw = rate.trim().replace(',', '.');
+          const parsed = /^\d+(\.\d+)?$/.test(raw) ? Number(raw) : NaN;
+          if (!Number.isFinite(parsed) || parsed <= 0) { setMessage('Ingresa una tasa mayor que cero.'); return; }
+          void run(async () => { await saveManualRate(parsed); setEditor(null); });
+        }} />
+      </>}
+      {editor !== null && <Pill label={t('Cancelar')} disabled={busy} onPress={() => {
+        setKey('');
+        setRate('');
+        setEditor(null);
+      }} />}
+      {!!message && <Text accessibilityLiveRegion="polite" style={{ color: colors.secondaryText }}>{t(message)}</Text>}
     </View>
   );
 }

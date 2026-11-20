@@ -1,3 +1,8 @@
+import { MissingKey, SQLCipherUnavailable } from '../../infrastructure/storage/unlock';
+import { CardCycleFields, type CardCycleDraft } from './card-cycle-fields';
+import { cardCycleDates, parseBillingDay } from './card-cycle';
+import { localDay } from '../../shared/date/local-day';
+import { InstallmentPreview } from '../installments/installment-preview';
 import { useLanguage } from '../../shared/language/language';
 import { BudgetField } from '../../shared/ui/budget-field';
 import { AccountColorField } from './account-color-field';
@@ -42,7 +47,7 @@ export default function AccountScreen() {
   const router = useRouter();
 
   const [accounts, setAccounts] = useState<SavedAccount[] | null>(null);
-  const [accountsFailed, setAccountsFailed] = useState(false);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
   const [movementsFailed, setMovementsFailed] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeAccountMovements, setActiveAccountMovements] = useState<Movement[]>([]);
@@ -55,11 +60,14 @@ export default function AccountScreen() {
   const [newCurrency, setNewCurrency] = useState<Currency>('COP');
   const [newColor, setNewColor] = useState('');
   const [newBudget, setNewBudget] = useState('');
+  const [newCycle, setNewCycle] = useState<CardCycleDraft>({ statement: '', payment: '' });
   const [newOpening, setNewOpening] = useState('0');
 
   // Edit account state
+  const [cardPreview, setCardPreview] = useState(false);
   const [editingAccount, setEditingAccount] = useState<SavedAccount | null>(null);
   const [editBudget, setEditBudget] = useState('');
+  const [editCycle, setEditCycle] = useState<CardCycleDraft>({ statement: '', payment: '' });
   const [editColor, setEditColor] = useState('');
   const [editName, setEditName] = useState('');
   const [editKind, setEditKind] = useState<AccountKind>('checking');
@@ -71,13 +79,18 @@ export default function AccountScreen() {
   const refreshId = useRef(0);
   const refreshAccounts = useCallback(async () => {
     const request = ++refreshId.current;
-    setAccountsFailed(false);
+    setAccountsError(null);
     setMovementsFailed(false);
     let rows: SavedAccount[];
     try {
       rows = await loadAccounts();
-    } catch {
-      if (request === refreshId.current) setAccountsFailed(true);
+    } catch (error) {
+      if (request === refreshId.current) {
+        setAccountsError(error instanceof MissingKey ? 'El llavero de este dispositivo no tiene la clave de la base de datos.'
+          : error instanceof SQLCipherUnavailable ? 'Esta compilación no puede abrir la base de datos cifrada.'
+            : 'No se pudieron cargar las cuentas.');
+        setLoadingMovements(false);
+      }
       return;
     }
 
@@ -127,6 +140,12 @@ export default function AccountScreen() {
       setError(t("Ingresa un color HEX válido."));
       return;
     }
+    const statementDay = newKind === 'credit_card' ? parseBillingDay(newCycle.statement) : null;
+    const paymentDay = newKind === 'credit_card' ? parseBillingDay(newCycle.payment) : null;
+    if (statementDay === undefined || paymentDay === undefined) {
+      setError(t('Ingresa días de corte y pago entre 1 y 31.'));
+      return;
+    }
     const budgetMinor = newKind === 'credit_card' && newBudget.trim() ? parseOpening(newBudget) : null;
     if (newKind === 'credit_card' && newBudget.trim() && (budgetMinor === null || budgetMinor <= 0)) {
       setError(t("Ingresa un presupuesto mensual mayor que cero."));
@@ -152,6 +171,8 @@ export default function AccountScreen() {
         currency: newCurrency,
         openingMinor: minor,
         budgetMinor,
+        statementDay,
+        paymentDay,
         color,
       });
 
@@ -159,6 +180,7 @@ export default function AccountScreen() {
       setNewName('');
       setNewColor('');
       setNewBudget('');
+      setNewCycle({ statement: '', payment: '' });
       setNewOpening('0');
       await refreshAccounts();
     } catch {
@@ -172,6 +194,7 @@ export default function AccountScreen() {
     setEditingAccount(acc);
     setEditName(acc.name);
     setEditColor(acc.color ?? '');
+    setEditCycle({ statement: String(acc.statementDay ?? ''), payment: String(acc.paymentDay ?? '') });
     setEditBudget(acc.budgetMinor == null ? '' : String(acc.budgetMinor / 100));
     setEditKind(acc.kind);
     setEditCurrency(acc.currency);
@@ -183,6 +206,12 @@ export default function AccountScreen() {
     const color = normalizeAccountColor(editColor);
     if (editColor.trim() && !color) {
       setError(t("Ingresa un color HEX válido."));
+      return;
+    }
+    const statementDay = editKind === 'credit_card' ? parseBillingDay(editCycle.statement) : null;
+    const paymentDay = editKind === 'credit_card' ? parseBillingDay(editCycle.payment) : null;
+    if (statementDay === undefined || paymentDay === undefined) {
+      setError(t('Ingresa días de corte y pago entre 1 y 31.'));
       return;
     }
     const budgetMinor = editKind === 'credit_card' && editBudget.trim() ? parseOpening(editBudget) : null;
@@ -204,6 +233,8 @@ export default function AccountScreen() {
         kind: editKind,
         currency: editCurrency,
         budgetMinor,
+        statementDay,
+        paymentDay,
         color,
       });
 
@@ -230,6 +261,8 @@ export default function AccountScreen() {
     }
   }
 
+  const cycle = activeAccount?.statementDay && activeAccount.paymentDay
+    ? cardCycleDates(localDay(), activeAccount.statementDay, activeAccount.paymentDay) : null;
   return (
     <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -330,6 +363,8 @@ export default function AccountScreen() {
 
             {newKind === 'credit_card' && <BudgetField value={newBudget} currency={newCurrency}
               onChange={setNewBudget} disabled={saving} />}
+            {newKind === 'credit_card' && <CardCycleFields value={newCycle}
+              onChange={setNewCycle} disabled={saving} />}
             <AccountColorField value={newColor} onChange={setNewColor} disabled={saving} />
 
             {!!error && (
@@ -358,9 +393,9 @@ export default function AccountScreen() {
         )}
 
         {/* Accounts Carousel (Referencia 4) */}
-        {accountsFailed ? (
+        {accountsError ? (
           <View style={{ gap: spacing.sm, padding: spacing.page }}>
-            <Text accessibilityRole="alert" style={{ color: colors.expense }}>{t("No se pudieron cargar las cuentas.")}</Text>
+            <Text accessibilityRole="alert" style={{ color: colors.expense }}>{t(accountsError)}</Text>
             <Pill label={t("Reintentar")} onPress={() => { void refreshAccounts(); }} />
           </View>
         ) : accounts === null ? (
@@ -438,6 +473,23 @@ export default function AccountScreen() {
               </View>
             )}
 
+            {activeAccount?.kind === 'credit_card' && <>
+              <View style={{ padding: spacing.md, gap: spacing.xs, backgroundColor: colors.surface, borderRadius: radius.card }}>
+                <Text style={{ color: colors.text, fontWeight: '700' }}>{t('Ciclo de facturación')}</Text>
+                <Text style={{ color: colors.secondaryText }}>
+                  {t('Día de corte')} · {activeAccount.statementDay ?? '—'}
+                </Text>
+                <Text style={{ color: colors.secondaryText }}>
+                  {t('Día de pago')} · {activeAccount.paymentDay ?? '—'}
+                </Text>
+                {cycle && <Text style={{ color: colors.secondaryText }}>
+                  {t('Corte y pago estimados del ciclo')} · {cycle.statement} / {cycle.payment}
+                </Text>}
+              </View>
+              <Pill label={t('Ver detalle de tarjeta · Ejemplo')} onPress={() => setCardPreview(true)} />
+              {cardPreview && <InstallmentPreview example principal={120000000} currency="COP"
+                purchaseDate="2026-11-20" accountName={t('Tarjeta de ejemplo')} onClose={() => setCardPreview(false)} />}
+            </>}
             {/* Active Account Movements List */}
             <View style={styles.movementsSection}>
               <View style={styles.movementsHeaderRow}>
@@ -549,6 +601,8 @@ export default function AccountScreen() {
 
             {editKind === 'credit_card' && <BudgetField value={editBudget} currency={editCurrency}
               onChange={setEditBudget} disabled={saving} />}
+            {editKind === 'credit_card' && <CardCycleFields value={editCycle}
+              onChange={setEditCycle} disabled={saving} />}
             <AccountColorField value={editColor} onChange={setEditColor} disabled={saving} />
 
             {!!error && (
@@ -602,7 +656,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.page,
-    paddingBottom: spacing.xxxl,
+    paddingBottom: 120,
     gap: spacing.lg,
   },
   headerRow: {

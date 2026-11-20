@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { startAutomaticBackups } from '../features/backup/automatic-backup';
 import { LanguageProvider } from '../shared/language/language';
 import { AppearanceProvider } from '../shared/theme/appearance';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
@@ -5,6 +7,7 @@ import { StatusBar } from 'react-native';
 import { useTheme } from '../shared/theme/theme';
 
 export default function Layout() {
+  useEffect(startAutomaticBackups, []);
   return (
     <LanguageProvider>
       <AppearanceProvider><AppNavigation /></AppearanceProvider>

@@ -6,14 +6,14 @@ import { GlassView } from './GlassView';
 import { radius, spacing, useTheme } from '../theme/theme';
 import { localDay } from '../date/local-day';
 
-export function Pill({ label, onPress, selected, accessibilityLabel }: {
-  label: string; onPress: () => void; selected?: boolean; accessibilityLabel?: string;
+export function Pill({ label, onPress, selected, accessibilityLabel, disabled }: {
+  label: string; onPress: () => void; selected?: boolean; accessibilityLabel?: string; disabled?: boolean;
 }) {
   const { colors } = useTheme();
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel}
-    accessibilityState={selected === undefined ? undefined : { selected }} onPress={onPress}
+    accessibilityState={{ selected, disabled }} disabled={disabled} onPress={onPress}
     style={({ pressed }) => ({
-      minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center',
+      opacity: disabled ? 0.5 : 1, minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center',
       paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.card,
       backgroundColor: selected ? colors.primary : pressed ? colors.selected : colors.surfaceSubtle,
     })}>
