@@ -19,12 +19,12 @@ function validatedColor(color: string | null | undefined) {
 
 export async function createAccount(account: AccountDetails): Promise<number> {
   const result = await (await database()).runAsync(
-    'INSERT INTO accounts(name, kind, currency, openingMinor, color, isCreditCard, budgetMinor, statementDay, paymentDay) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO accounts(name, kind, currency, openingMinor, color, isCreditCard, budgetMinor, statementDay, paymentDay, cardProfile) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     account.name.trim(), account.kind === 'credit_card' ? 'credit' : account.kind,
     account.currency, account.openingMinor, validatedColor(account.color), account.kind === 'credit_card' ? 1 : 0,
     account.kind === 'credit_card' ? account.budgetMinor ?? null : null,
     account.kind === 'credit_card' ? account.statementDay ?? null : null,
-    account.kind === 'credit_card' ? account.paymentDay ?? null : null
+    account.kind === 'credit_card' ? account.paymentDay ?? null : null, account.cardProfile ?? null
   );
   return result.lastInsertRowId;
 }
@@ -71,6 +71,11 @@ export async function updateAccount(
       fields.push(field + ' = ?');
       values.push(value);
     }
+  }
+
+  if (input.cardProfile !== undefined) {
+    fields.push('cardProfile = ?');
+    values.push(input.cardProfile);
   }
 
   if (fields.length === 0) return;

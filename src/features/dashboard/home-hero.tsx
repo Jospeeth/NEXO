@@ -5,18 +5,20 @@ import { useLanguage } from '../../shared/language/language';
 import { elevation, radius, spacing, useTheme } from '../../shared/theme/theme';
 import { GlassBackdrop } from '../../shared/ui/GlassView';
 
+import { currencyFlag } from '../exchange/rate';
 import type { ConsolidatedCurrency } from './consolidated-balance';
 import { homeMoney, type HomeOverview } from './home-overview';
 
 interface Props {
   currency: ConsolidatedCurrency;
+  currencies: ConsolidatedCurrency[];
   overview?: HomeOverview;
   status?: string;
   periodLabel: string;
   onCurrencyChange: (currency: ConsolidatedCurrency) => void;
 }
 
-export function HomeHero({ currency, overview, status, periodLabel, onCurrencyChange }: Props) {
+export function HomeHero({ currency, currencies, overview, status, periodLabel, onCurrencyChange }: Props) {
   const { t, locale } = useLanguage();
   const { colors, isDark } = useTheme();
   const money = (key: 'balance' | 'previous' | 'income' | 'expense') => homeMoney(overview?.[key], currency, locale);
@@ -25,7 +27,6 @@ export function HomeHero({ currency, overview, status, periodLabel, onCurrencyCh
     : new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1, signDisplay: 'exceptZero' }).format(change);
   const trendColor = change === null || change === 0 ? '#FFFFFF' : change > 0 ? '#AAFFC2' : '#FFBDD0';
   const tileBackground = isDark ? colors.surface : '#FAF6FA';
-  const currencies = [['COP', '🇨🇴'], ['USD', '🇺🇸']] as const;
 
   return (
     <View style={styles.hero}>
@@ -41,7 +42,7 @@ export function HomeHero({ currency, overview, status, periodLabel, onCurrencyCh
       <View accessibilityRole="radiogroup" accessibilityLabel={t('Moneda de visualización')}
         style={[styles.currencyGroup, { borderColor: colors.border }]}>
         <GlassBackdrop borderRadius={radius.pill} />
-        {currencies.map(([value, flag]) => {
+        {currencies.map(value => {
           const selected = currency === value;
           return (
             <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: selected }}
@@ -50,7 +51,7 @@ export function HomeHero({ currency, overview, status, periodLabel, onCurrencyCh
               style={({ pressed }) => [styles.currencyButton, {
                 backgroundColor: selected || pressed ? colors.glassBackground : 'transparent',
               }]}>
-              <Text style={styles.flag}>{flag}</Text>
+              <Text style={styles.flag}>{currencyFlag(value)}</Text>
               <Text style={{ color: selected ? colors.text : colors.secondaryText, fontWeight: selected ? '700' : '600' }}>{value}</Text>
               {selected && <Ionicons name="chevron-down" size={12} color={colors.secondaryText} />}
             </Pressable>
@@ -65,7 +66,7 @@ export function HomeHero({ currency, overview, status, periodLabel, onCurrencyCh
             resizeMode="stretch" style={styles.waves} />
           <View style={styles.balanceHeader}>
             <Pressable accessibilityRole="button" accessibilityLabel={t('Información del balance')} hitSlop={10}
-              onPress={() => Alert.alert(t('Balance total'), status ?? t('Saldo de tus cuentas y cierre anterior convertidos con la tasa USD/COP configurada.'))}
+              onPress={() => Alert.alert(t('Balance total'), status ?? t('Saldos convertidos con las tasas de referencia de Frankfurter.'))}
               style={styles.balanceLabel}>
               <Text style={styles.balanceLabelText}>{t('Balance total')}</Text>
               <Ionicons name="information-circle-outline" size={15} color="#FFFFFF" />
@@ -113,7 +114,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 25, fontWeight: '800', letterSpacing: -0.8 },
   subtitle: { fontSize: 15, fontWeight: '500', marginTop: 1 },
   avatar: { width: 43, height: 43, borderRadius: 22 },
-  currencyGroup: { alignSelf: 'flex-start', flexDirection: 'row', borderRadius: radius.pill, borderWidth: 1, marginLeft: spacing.xs, marginTop: 3 },
+  currencyGroup: { alignSelf: 'flex-start', flexDirection: 'row', flexWrap: 'wrap', borderRadius: radius.pill, borderWidth: 1, marginLeft: spacing.xs, marginTop: 3 },
   currencyButton: { minHeight: 32, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 5, borderRadius: radius.pill },
   flag: { fontSize: 16 },
   balanceShadow: { borderRadius: radius.cardLg },

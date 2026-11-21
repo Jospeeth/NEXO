@@ -6,6 +6,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HomeHero } from './home-hero';
 import { HomeFlow } from './home-flow';
+import { consolidatedBalance } from './consolidated-balance';
 import { homeMoney, homeOverview } from './home-overview';
 import type { ConsolidatedCurrency } from './consolidated-balance';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,13 +27,16 @@ export default function HomeScreen() {
   const { accounts = [], movements = [] } = ledger ?? {};
   const [displayCurrency, setDisplayCurrency] = useState<ConsolidatedCurrency | null>(null);
   const [showDetails, setShowDetails] = useState(false);
-  const { settings } = useExchange();
-  const quote = settings?.quote ?? null;
   const [month, setMonth] = useState(() => new Date());
   const today = localDay();
   const period = localDay(month).slice(0, 7);
   const periodLabel = new Intl.DateTimeFormat(locale, { month: 'short', year: 'numeric' }).format(month);
-  const heroCurrency = displayCurrency ?? settings?.currency ?? (accounts[0]?.currency === 'USD' ? 'USD' : 'COP');
+  const historicalDate = period < today.slice(0, 7)
+    ? localDay(new Date(month.getFullYear(), month.getMonth() + 1, 0)) : undefined;
+  const { settings } = useExchange(historicalDate);
+  const quote = settings?.quote ?? null;
+  const displayCurrencies = settings ? [settings.currency, ...settings.preferred] : ['COP', 'USD'];
+  const heroCurrency = displayCurrency && displayCurrencies.includes(displayCurrency) ? displayCurrency : displayCurrencies[0] ?? 'COP';
   const overview = ledger && !failed ? homeOverview(accounts, movements, today, heroCurrency, quote, period) : undefined;
   const money = (value: Parameters<typeof homeMoney>[0]) => homeMoney(value, heroCurrency, locale);
   const recent = [...(overview?.periodMovements ?? [])]
@@ -42,7 +46,7 @@ export default function HomeScreen() {
     : overview.future ? t('El período aún no comienza.')
     : overview.balance.kind === 'historical-unavailable' ? t('Saldo histórico no disponible')
     : results.some(result => result.kind === 'unsupported-currency') ? t('Falta una tasa para otras monedas.')
-      : results.some(result => result.kind === 'missing-rate') ? t('Configura la tasa USD/COP en Ajustes.')
+      : results.some(result => result.kind === 'missing-rate') ? t('No hay una tasa para este período.')
         : results.some(result => result.kind === 'out-of-range') ? t('El saldo supera el rango que admite esta vista.')
           : overview.previous.kind === 'historical-unavailable' ? t('Cierre anterior no disponible') : undefined;
   const staleRate = settings?.stale && results.some(result => result.kind === 'available' && result.usedQuote);
@@ -52,7 +56,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: isDark ? colors.background : '#F3EDF5' }}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: 120, gap: spacing.md }}>
-        <HomeHero currency={heroCurrency} overview={overview} status={status} periodLabel={periodLabel} onCurrencyChange={setDisplayCurrency} />
+        <HomeHero currencies={displayCurrencies} currency={heroCurrency} overview={overview} status={status} periodLabel={periodLabel} onCurrencyChange={setDisplayCurrency} />
         {failed && <Pill label={t('Reintentar')} onPress={() => { void refresh(); }} />}
         <View style={{ gap: spacing.xs }}>
           <SectionHeading title={t('Resumen financiero')} action={t(showDetails ? 'Ocultar detalles' : 'Detalles')}
@@ -78,7 +82,7 @@ export default function HomeScreen() {
         </View>
         {showDetails && overview && <>
           <BalanceCarousel overview={overview} currency={heroCurrency}
-            manual={settings?.manual} stale={settings?.stale ?? false}
+            stale={settings?.stale ?? false}
             status={overview.balance.kind === 'available' ? undefined : status} />
           <View style={{ backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.lg, gap: spacing.md }}>
             <Text accessibilityRole="header" style={{ color: colors.text, fontWeight: '700' }}>
@@ -101,9 +105,11 @@ export default function HomeScreen() {
         </>}
         <SectionHeading title={t("Mis cuentas")} action={t("Ver todas")} onPress={() => router.push('/accounts')} />
         {ledger && !failed && !accounts.length && <Pill label={t("Crear primera cuenta")} onPress={() => router.push('/accounts')} />}
-        {overview && !overview.future && overview.accountRows.map(({ account, closing, budgetSpent }) => (
+        {overview && !overview.future && overview.accountRows.map(({ account, closing }) => (
           <AccountCard key={account.id} account={account} variant="compact" style={{ width: '100%' }}
-            period={{ balanceMinor: closing, budgetSpent, historical: !overview.isCurrent }} />
+            period={{ balanceMinor: closing }}
+            equivalent={closing === null || account.currency === heroCurrency ? undefined
+              : money(consolidatedBalance([{ currency: account.currency, balanceMinor: closing }], heroCurrency, quote)) + ' ' + heroCurrency} />
         ))}
         {overview?.future && <Text style={{ color: colors.secondaryText }}>{t('El período aún no comienza.')}</Text>}
         <SectionHeading title={t("Transacciones recientes")} action={t("Ver todas")} onPress={() => router.push('/movements')} />

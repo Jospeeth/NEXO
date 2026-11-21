@@ -17,7 +17,7 @@ const movements = [
   { accountId: 2, kind: 'expense', amountMinor: 25, transactionDate: '2026-11-19' },
   { accountId: 1, kind: 'income', amountMinor: 900000, transactionDate: '2026-11-20' },
 ];
-const quote = { copPerUsd: 4000, quotedAt: 1 };
+const quote = { rates: { COP: { rate: 4000, date: '2026-11-18' } }, fetchedAt: 1 };
 
 test('consolida ambos saldos y el cierre anterior, y convierte el flujo en ambas direcciones', () => {
   const cop = homeOverview(accounts, movements, '2026-11-19', 'COP', quote);
@@ -34,7 +34,7 @@ test('consolida ambos saldos y el cierre anterior, y convierte el flujo en ambas
   assert.equal(usd.income.minor, 125);
   assert.equal(usd.expense.minor, 75);
 
-  const manual = homeOverview(accounts, movements, '2026-11-19', 'USD', { ...quote, copPerUsd: 5000 });
+  const manual = homeOverview(accounts, movements, '2026-11-19', 'USD', { ...quote, rates: { COP: { rate: 5000, date: '2026-11-18' } } });
   assert.equal(manual.balance.minor, 1260);
   assert.equal(manual.expense.minor, 65);
 });

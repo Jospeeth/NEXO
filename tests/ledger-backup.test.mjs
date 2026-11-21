@@ -7,12 +7,14 @@ import { fourthMigration } from '../src/infrastructure/storage/migration-v4.ts';
 import { fifthMigration } from '../src/infrastructure/storage/migration-v5.ts';
 import { sixthMigration } from '../src/infrastructure/storage/migration-v6.ts';
 import { seventhMigration } from '../src/infrastructure/storage/migration-v7.ts';
+import { eighthMigration } from '../src/infrastructure/storage/migration-v8.ts';
+import { ninthMigration } from '../src/infrastructure/storage/migration-v9.ts';
 import { parseLedgerBackup, readLedgerBackup, restoreLedgerBackup } from '../src/features/backup/ledger-backup.ts';
 
 function ledger() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys=ON');
-  for (const migration of [firstMigration, secondMigration, thirdMigration, fourthMigration, fifthMigration, sixthMigration, seventhMigration]) {
+  for (const migration of [firstMigration, secondMigration, thirdMigration, fourthMigration, fifthMigration, sixthMigration, seventhMigration, eighthMigration, ninthMigration]) {
     sqlite.exec(migration);
   }
   return {
@@ -40,13 +42,15 @@ test('restaura cuentas, presupuestos y transferencias conservando sus referencia
         (91,42,'expense',1000,'Pago','2026-11-19','2026-11-18',NULL,'T1',1),
         (92,41,'income',1000,'Pago','2026-11-19','2026-11-18',NULL,'T1',1);
     `);
+    source.execSync(`UPDATE accounts SET cardProfile = '{"institution":"Bancolombia","finish":"royal","lastFour":"4815"}' WHERE id=41;
+      UPDATE movements SET feeOccurrence='2026-11-18' WHERE id=90;`);
     const backup = parseLedgerBackup(JSON.parse(JSON.stringify(readLedgerBackup(source))));
     restoreLedgerBackup(target, backup);
     assert.deepEqual(readLedgerBackup(target), backup);
-    assert.deepEqual(backup.rows.accounts[0].slice(-2), [10, 25]);
+    assert.deepEqual(backup.rows.accounts[0].slice(-3, -1), [10, 25]);
     const old = structuredClone(backup);
-    old.rows.accounts = old.rows.accounts.map(row => row.slice(0, -2));
-    assert.deepEqual(parseLedgerBackup(old).rows.accounts[0].slice(-2), [null, null]);
+    old.rows.accounts = old.rows.accounts.map(row => row.slice(0, 12));
+    assert.deepEqual(parseLedgerBackup(old).rows.accounts[0].slice(-3), [null, null, null]);
 
     const invalid = structuredClone(backup);
     invalid.rows.movements[0][1] = 999;

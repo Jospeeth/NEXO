@@ -1,12 +1,15 @@
+import { CardCustomization } from './card-customization';
+import { customDraft, serializeCustomization } from './card-customization-draft';
+import { CardFeeSummary } from './card-fee-summary';
+import { readCardProfile } from './card-profile';
+import { useExchange } from '../exchange/use-exchange';
+import { CurrencyPicker } from '../exchange/currency-picker';
 import { MissingKey, SQLCipherUnavailable } from '../../infrastructure/storage/unlock';
 import { CardCycleFields, type CardCycleDraft } from './card-cycle-fields';
 import { cardCycleDates, parseBillingDay } from './card-cycle';
 import { localDay } from '../../shared/date/local-day';
 import { InstallmentPreview } from '../installments/installment-preview';
 import { useLanguage } from '../../shared/language/language';
-import { BudgetField } from '../../shared/ui/budget-field';
-import { AccountColorField } from './account-color-field';
-import { normalizeAccountColor } from './account-color';
 import React, { useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
@@ -32,7 +35,6 @@ import { AccountCard } from '../../shared/ui/AccountCard';
 import { TransactionRow } from '../../shared/ui/TransactionRow';
 import {
   accountKinds,
-  currencies,
   parseOpening,
   type AccountKind,
   type Currency,
@@ -45,6 +47,7 @@ export default function AccountScreen() {
   const { t } = useLanguage();
   const { colors } = useTheme();
   const router = useRouter();
+  const { settings: exchange } = useExchange();
 
   const [accounts, setAccounts] = useState<SavedAccount[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -58,17 +61,15 @@ export default function AccountScreen() {
   const [newName, setNewName] = useState('');
   const [newKind, setNewKind] = useState<AccountKind>('checking');
   const [newCurrency, setNewCurrency] = useState<Currency>('COP');
-  const [newColor, setNewColor] = useState('');
-  const [newBudget, setNewBudget] = useState('');
+  const [newCustom, setNewCustom] = useState(() => customDraft());
   const [newCycle, setNewCycle] = useState<CardCycleDraft>({ statement: '', payment: '' });
   const [newOpening, setNewOpening] = useState('0');
 
   // Edit account state
   const [cardPreview, setCardPreview] = useState(false);
   const [editingAccount, setEditingAccount] = useState<SavedAccount | null>(null);
-  const [editBudget, setEditBudget] = useState('');
   const [editCycle, setEditCycle] = useState<CardCycleDraft>({ statement: '', payment: '' });
-  const [editColor, setEditColor] = useState('');
+  const [editCustom, setEditCustom] = useState(() => customDraft());
   const [editName, setEditName] = useState('');
   const [editKind, setEditKind] = useState<AccountKind>('checking');
   const [editCurrency, setEditCurrency] = useState<Currency>('COP');
@@ -135,22 +136,15 @@ export default function AccountScreen() {
 
   async function handleCreateAccount() {
     if (saving) return;
-    const color = normalizeAccountColor(newColor);
-    if (newColor.trim() && !color) {
-      setError(t("Ingresa un color HEX válido."));
-      return;
-    }
+    const profile = serializeCustomization(newCustom, newKind, newCurrency);
+    if (profile.error) { setError(t(profile.error)); return; }
     const statementDay = newKind === 'credit_card' ? parseBillingDay(newCycle.statement) : null;
     const paymentDay = newKind === 'credit_card' ? parseBillingDay(newCycle.payment) : null;
     if (statementDay === undefined || paymentDay === undefined) {
       setError(t('Ingresa días de corte y pago entre 1 y 31.'));
       return;
     }
-    const budgetMinor = newKind === 'credit_card' && newBudget.trim() ? parseOpening(newBudget) : null;
-    if (newKind === 'credit_card' && newBudget.trim() && (budgetMinor === null || budgetMinor <= 0)) {
-      setError(t("Ingresa un presupuesto mensual mayor que cero."));
-      return;
-    }
+
     const minor = parseOpening(newOpening);
     if (!newName.trim()) {
       setError(t("Ingresa un nombre para la cuenta."));
@@ -170,16 +164,14 @@ export default function AccountScreen() {
         kind: newKind,
         currency: newCurrency,
         openingMinor: minor,
-        budgetMinor,
         statementDay,
         paymentDay,
-        color,
+        cardProfile: profile.serialized,
       });
 
       setIsCreating(false);
       setNewName('');
-      setNewColor('');
-      setNewBudget('');
+      setNewCustom(customDraft());
       setNewCycle({ statement: '', payment: '' });
       setNewOpening('0');
       await refreshAccounts();
@@ -192,10 +184,9 @@ export default function AccountScreen() {
 
   function startEdit(acc: SavedAccount) {
     setEditingAccount(acc);
+    setEditCustom(customDraft(acc));
     setEditName(acc.name);
-    setEditColor(acc.color ?? '');
     setEditCycle({ statement: String(acc.statementDay ?? ''), payment: String(acc.paymentDay ?? '') });
-    setEditBudget(acc.budgetMinor == null ? '' : String(acc.budgetMinor / 100));
     setEditKind(acc.kind);
     setEditCurrency(acc.currency);
     setError('');
@@ -203,22 +194,15 @@ export default function AccountScreen() {
 
   async function handleSaveAccountEdit() {
     if (!editingAccount || saving) return;
-    const color = normalizeAccountColor(editColor);
-    if (editColor.trim() && !color) {
-      setError(t("Ingresa un color HEX válido."));
-      return;
-    }
+    const profile = serializeCustomization(editCustom, editKind, editCurrency);
+    if (profile.error) { setError(t(profile.error)); return; }
     const statementDay = editKind === 'credit_card' ? parseBillingDay(editCycle.statement) : null;
     const paymentDay = editKind === 'credit_card' ? parseBillingDay(editCycle.payment) : null;
     if (statementDay === undefined || paymentDay === undefined) {
       setError(t('Ingresa días de corte y pago entre 1 y 31.'));
       return;
     }
-    const budgetMinor = editKind === 'credit_card' && editBudget.trim() ? parseOpening(editBudget) : null;
-    if (editKind === 'credit_card' && editBudget.trim() && (budgetMinor === null || budgetMinor <= 0)) {
-      setError(t("Ingresa un presupuesto mensual mayor que cero."));
-      return;
-    }
+
     if (!editName.trim()) {
       setError(t("El nombre de la cuenta no puede estar vacío."));
       return;
@@ -232,10 +216,9 @@ export default function AccountScreen() {
         name: editName.trim(),
         kind: editKind,
         currency: editCurrency,
-        budgetMinor,
         statementDay,
         paymentDay,
-        color,
+        cardProfile: profile.serialized,
       });
 
       setEditingAccount(null);
@@ -261,6 +244,10 @@ export default function AccountScreen() {
     }
   }
 
+  const recentBanks = [...new Set([...(accounts ?? [])].reverse().flatMap(account => {
+    const institution = readCardProfile(account.cardProfile).institution;
+    return institution ? [institution] : [];
+  }))].slice(0, 4);
   const cycle = activeAccount?.statementDay && activeAccount.paymentDay
     ? cardCycleDates(localDay(), activeAccount.statementDay, activeAccount.paymentDay) : null;
   return (
@@ -329,26 +316,7 @@ export default function AccountScreen() {
               ))}
             </View>
 
-            <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>{t("Moneda")}</Text>
-            <View style={styles.chipsRow}>
-              {currencies.map(curr => (
-                <Pressable
-                  key={curr}
-                  onPress={() => setNewCurrency(curr)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: newCurrency === curr ? colors.primary : colors.surfaceSubtle,
-                      borderColor: newCurrency === curr ? colors.primary : colors.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.chipText, { color: newCurrency === curr ? colors.onPrimary : colors.text }]}>
-                    {curr}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <CurrencyPicker label={t("Moneda")} value={newCurrency} onChange={setNewCurrency} disabled={saving} />
 
             <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>{t("Saldo de apertura")}</Text>
             <TextInput
@@ -361,11 +329,10 @@ export default function AccountScreen() {
               editable={!saving}
             />
 
-            {newKind === 'credit_card' && <BudgetField value={newBudget} currency={newCurrency}
-              onChange={setNewBudget} disabled={saving} />}
             {newKind === 'credit_card' && <CardCycleFields value={newCycle}
               onChange={setNewCycle} disabled={saving} />}
-            <AccountColorField value={newColor} onChange={setNewColor} disabled={saving} />
+            <CardCustomization value={newCustom} onChange={setNewCustom} name={newName}
+              currency={newCurrency} kind={newKind} disabled={saving} recent={recentBanks} />
 
             {!!error && (
               <Text style={[styles.errorText, { color: colors.expense }]}>{error}</Text>
@@ -486,6 +453,8 @@ export default function AccountScreen() {
                   {t('Corte y pago estimados del ciclo')} · {cycle.statement} / {cycle.payment}
                 </Text>}
               </View>
+              <CardFeeSummary account={activeAccount} movements={activeAccountMovements}
+                quote={exchange?.quote ?? null} ready={!loadingMovements && !movementsFailed} />
               <Pill label={t('Ver detalle de tarjeta · Ejemplo')} onPress={() => setCardPreview(true)} />
               {cardPreview && <InstallmentPreview example principal={120000000} currency="COP"
                 purchaseDate="2026-11-20" accountName={t('Tarjeta de ejemplo')} onClose={() => setCardPreview(false)} />}
@@ -578,32 +547,12 @@ export default function AccountScreen() {
               ))}
             </View>
 
-            <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>{t("Moneda")}</Text>
-            <View style={styles.chipsRow}>
-              {currencies.map(curr => (
-                <Pressable
-                  key={curr}
-                  onPress={() => setEditCurrency(curr)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: editCurrency === curr ? colors.primary : colors.surfaceSubtle,
-                      borderColor: editCurrency === curr ? colors.primary : colors.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.chipText, { color: editCurrency === curr ? colors.onPrimary : colors.text }]}>
-                    {curr}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <CurrencyPicker label={t("Moneda")} value={editCurrency} onChange={setEditCurrency} disabled={saving} />
 
-            {editKind === 'credit_card' && <BudgetField value={editBudget} currency={editCurrency}
-              onChange={setEditBudget} disabled={saving} />}
             {editKind === 'credit_card' && <CardCycleFields value={editCycle}
               onChange={setEditCycle} disabled={saving} />}
-            <AccountColorField value={editColor} onChange={setEditColor} disabled={saving} />
+            <CardCustomization value={editCustom} onChange={setEditCustom} name={editName}
+              currency={editCurrency} kind={editKind} disabled={saving} recent={recentBanks} />
 
             {!!error && (
               <Text style={[styles.errorText, { color: colors.expense }]}>{error}</Text>

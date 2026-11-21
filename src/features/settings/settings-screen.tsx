@@ -1,3 +1,4 @@
+import type { SettingsSection } from './settings-menu';
 import { BackupSection } from '../backup/backup-section';
 import { ExchangeRateCard } from '../exchange/rate-card';
 import { ImportSection } from '../import/import-section';
@@ -18,6 +19,8 @@ import {
   Switch,
   KeyboardAvoidingView,
   Alert,
+  ActionSheetIOS,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -28,12 +31,12 @@ import { loadCategories, updateCategory, createCategory, deleteCategory } from '
 import type { Category, CategoryKind } from '../categories/category';
 
 const appearanceOptions: { value: AppearancePreference; label: string }[] = [
-  { value: 'auto', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
+  { value: 'auto', label: 'Sistema' },
+  { value: 'light', label: 'Claro' },
+  { value: 'dark', label: 'Oscuro' },
 ];
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ section }: { section: SettingsSection }) {
   const { t, language, ready: languageReady, saving: savingLanguage, change: changeLanguage, error: languageError } = useLanguage();
   const { colors } = useTheme();
   const { preference, ready, saving: savingAppearance, error: appearanceError, change } = useAppearanceSettings();
@@ -72,8 +75,8 @@ export default function SettingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void refreshCategories();
-    }, [refreshCategories])
+      if (section === 'categories' || section === 'data') void refreshCategories();
+    }, [refreshCategories, section])
   );
 
   function startEdit(cat: Category) {
@@ -167,39 +170,22 @@ export default function SettingsScreen() {
   }
 
   return (
-    <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView edges={['bottom']} style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Title */}
-        <View style={styles.header}>
-          <Text style={[styles.subtitle, { color: colors.primary }]}>{t("CONFIGURACIÓN")}</Text>
-          <Text style={[styles.title, { color: colors.text }]}>{t("Ajustes")}</Text>
-        </View>
-
-        {/* System Appearance Group */}
-        <View style={styles.group}>
-          <Text style={[styles.groupTitle, { color: colors.secondaryText }]}>APPEARANCE</Text>
+        {section === 'appearance' && <View style={styles.group}>
           <View style={[styles.groupedCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View accessibilityRole="radiogroup" accessibilityLabel="Appearance"
-              style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, padding: spacing.xs }}>
-              {appearanceOptions.map(({ value, label }) => {
-                const selected = preference === value;
-                return (
-                  <Pressable key={value} accessibilityRole="radio"
-                    accessibilityState={{ checked: selected, disabled: !ready || savingAppearance }}
-                    disabled={!ready || savingAppearance} onPress={() => { void change(value); }}
-                    style={({ pressed }) => ({
-                      flexGrow: 1, minHeight: 44, paddingHorizontal: spacing.md,
-                      alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm,
-                      backgroundColor: selected ? colors.primary : pressed ? colors.selected : colors.surfaceSubtle,
-                    })}>
-                    <Text style={{ color: selected ? colors.onPrimary : colors.text, fontWeight: '600' }}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              {appearanceError && <Text accessibilityRole="alert" style={{ color: colors.expense }}>{t(appearanceError)}</Text>}
-            </View>
+            <Pressable accessibilityRole="button" disabled={!ready || savingAppearance} style={styles.row} onPress={() => {
+              const choices = appearanceOptions.map(option => ({ text: t(option.label), onPress: () => { void change(option.value); } }));
+              if (Platform.OS === 'ios') {
+                ActionSheetIOS.showActionSheetWithOptions({ options: [...choices.map(choice => choice.text), t('Cancelar')],
+                  cancelButtonIndex: choices.length }, index => choices[index]?.onPress());
+              } else Alert.alert(t('Tema'), undefined, choices);
+            }}>
+              <Text style={[styles.rowText, { flex: 1, color: colors.text }]}>{t('Tema')}</Text>
+              <Text style={{ color: colors.secondaryText }}>{t(appearanceOptions.find(option => option.value === preference)?.label ?? 'Sistema')}</Text>
+              <Ionicons name="chevron-forward" size={15} color={colors.secondaryText} />
+            </Pressable>
+            {appearanceError && <Text accessibilityRole="alert" style={{ color: colors.expense, padding: spacing.md }}>{t(appearanceError)}</Text>}
             <View style={[styles.divider, { backgroundColor: colors.borderSubtle }]} />
             <View style={styles.row}>
               <View style={{ flex: 1, gap: spacing.xs }}>
@@ -216,10 +202,9 @@ export default function SettingsScreen() {
               {t('No se pudo cargar o guardar el efecto visual.')}
             </Text>}
           </View>
-        </View>
+        </View>}
 
-        <View style={styles.group}>
-          <Text style={[styles.groupTitle, { color: colors.secondaryText }]}>LANGUAGE</Text>
+        {section === 'language' && <View style={styles.group}>
           <View accessibilityRole="radiogroup" accessibilityLabel="Language"
             style={[styles.groupedCard, { flexDirection: 'row', flexWrap: 'wrap', padding: spacing.xs,
               gap: spacing.xs, backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -238,15 +223,16 @@ export default function SettingsScreen() {
               {language === 'en' ? 'Could not load or save your language preference.' : 'No se pudo cargar o guardar tu idioma.'}
             </Text>}
           </View>
-        </View>
+        </View>}
 
-        <ExchangeRateCard />
-        <ExportSection />
-        <BackupSection onRestored={refreshCategories} />
-        <ImportSection onImported={refreshCategories} />
+        {section === 'currencies' && <ExchangeRateCard />}
+        {section === 'data' && <>
+          <ExportSection />
+          <BackupSection onRestored={refreshCategories} />
+          <ImportSection onImported={refreshCategories} />
+        </>}
 
-        {/* Categories Management (Edición de categorías con EMOJIS) */}
-        <View style={styles.group}>
+        {section === 'categories' && <View style={styles.group}>
           <View style={styles.groupHeaderRow}>
             <Text style={[styles.groupTitle, { color: colors.secondaryText }]}>
               {t("CATEGORÍAS Y EMOJIS")}
@@ -298,10 +284,9 @@ export default function SettingsScreen() {
               </React.Fragment>
             ))}
           </View>
-        </View>
+        </View>}
 
-        {/* Security & Financial Privacy Group */}
-        <View style={styles.group}>
+        {section === 'security' && <View style={styles.group}>
           <Text style={[styles.groupTitle, { color: colors.secondaryText }]}>
             {t("SEGURIDAD Y PRIVACIDAD")}
           </Text>
@@ -322,14 +307,13 @@ export default function SettingsScreen() {
               <Text style={[styles.rowValue, { color: colors.secondaryText }]}>iOS Keychain</Text>
             </View>
           </View>
-        </View>
+        </View>}
 
-        {/* App Version Info */}
-        <View style={styles.footer}>
+        {section === 'security' && <View style={styles.footer}>
           <Text style={[styles.footerText, { color: colors.tertiaryText }]}>
             {t("NEXO Finanzas Personales · v0.1.0")}
           </Text>
-        </View>
+        </View>}
       </ScrollView>
 
       {/* Edit Category Modal */}
@@ -520,7 +504,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.page,
-    paddingBottom: 120,
+    paddingBottom: spacing.xl,
     gap: spacing.xl,
   },
   header: {

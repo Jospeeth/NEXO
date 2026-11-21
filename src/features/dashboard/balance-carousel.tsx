@@ -6,24 +6,23 @@ import { Pill } from '../../shared/ui/date-controls';
 import { radius, spacing, type, useTheme } from '../../shared/theme/theme';
 import { displayBalance, type Currency } from '../accounts/account';
 import type { ConsolidatedCurrency } from './consolidated-balance';
+import { currencyFlag } from '../exchange/rate';
 import { homeMoney, type HomeOverview } from './home-overview';
 
 interface Props {
   overview: HomeOverview;
   currency: ConsolidatedCurrency;
   stale: boolean;
-  manual?: boolean;
   status?: string;
 }
 
-export function BalanceCarousel({ overview, currency, stale, manual, status }: Props) {
+export function BalanceCarousel({ overview, currency, stale, status }: Props) {
   const { t, locale } = useLanguage();
   const { colors } = useTheme();
   const [mode, setMode] = useState<'native' | 'total'>('native');
   const [nativeCurrency, setNativeCurrency] = useState<Currency | null>(null);
   const source = nativeCurrency ?? currency;
-  const available: Currency[] = ['COP', 'USD'];
-  if (overview.accountRows.some(row => row.account.currency === 'EUR')) available.push('EUR');
+  const available = [...new Set([source, ...overview.accountRows.map(row => row.account.currency)])];
   const selected = overview.accountRows.filter(row => row.account.currency === source);
   const nativeTotal = selected.reduce((total, row) => total + (row.closing ?? 0), 0);
   const nativeMissing = overview.future || selected.some(row => row.closing === null);
@@ -41,13 +40,13 @@ export function BalanceCarousel({ overview, currency, stale, manual, status }: P
       </Text>
       {mode === 'total' && (status || (balance.kind === 'available' && balance.usedQuote)) && (
         <Text style={{ color: '#FFFFFF' }}>
-          {status ?? `${t('Estimado')} · ${manual ? t('Tasa manual') : 'APILayer'}${stale ? ' · ' + t('Tasa desactualizada') : ''}`}
+          {status ?? `${t('Estimado')} · Frankfurter${stale ? ' · ' + t('Tasa desactualizada') : ''}`}
         </Text>
       )}
       {mode === 'native' && <>
         {nativeMissing && <Text style={{ color: '#FFFFFF' }}>{t(overview.future ? 'El período aún no comienza.' : 'Saldo histórico no disponible')}</Text>}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
-          {available.map(value => <Pill key={value} label={({ COP: '🇨🇴 COP', USD: '🇺🇸 USD', EUR: 'EUR' })[value]}
+          {available.map(value => <Pill key={value} label={`${currencyFlag(value)} ${value}`}
             selected={value === source} onPress={() => setNativeCurrency(value)} />)}
         </View>
       </>}

@@ -13,17 +13,19 @@ interface Props {
   currency: Currency;
   purchaseDate: string;
   firstDueDate?: string;
+  preferredInstallments?: number;
+  monthlyInterest?: number;
   onClose: () => void;
   example?: boolean;
   accountName?: string;
 }
 
-export function InstallmentPreview({ principal, currency, purchaseDate, firstDueDate, onClose, example, accountName }: Props) {
+export function InstallmentPreview({ principal, currency, purchaseDate, firstDueDate, preferredInstallments, monthlyInterest, onClose, example, accountName }: Props) {
   const { t } = useLanguage();
   const { colors } = useTheme();
-  const [count, setCount] = useState(example ? '6' : '1');
-  const [custom, setCustom] = useState(false);
-  const [rate, setRate] = useState(example ? '2' : '0');
+  const [count, setCount] = useState(example ? '6' : String(preferredInstallments ?? 1));
+  const [custom, setCustom] = useState(preferredInstallments !== undefined && ![1, 3, 6, 12].includes(preferredInstallments));
+  const [rate, setRate] = useState(example ? '2' : String(monthlyInterest ?? 0));
   const [annual, setAnnual] = useState(false);
   const [free, setFree] = useState(false);
   const [showPlan, setShowPlan] = useState(example ?? false);

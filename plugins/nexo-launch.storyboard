@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" targetRuntime="iOS.CocoaTouch" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="nexo-launch-controller">
+  <dependencies>
+    <deployment identifier="iOS"/>
+    <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="24053.1"/>
+  </dependencies>
+  <scenes>
+    <scene sceneID="nexo-launch-scene">
+      <objects>
+        <viewController id="nexo-launch-controller" sceneMemberID="viewController">
+          <view key="view" contentMode="scaleToFill" id="nexo-launch-root">
+            <rect key="frame" x="0" y="0" width="393" height="852"/>
+            <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+            <subviews>
+              <imageView userInteractionEnabled="NO" contentMode="scaleToFill" image="NexoLaunchBackdrop" translatesAutoresizingMaskIntoConstraints="NO" id="nexo-launch-bg">
+                <rect key="frame" x="0" y="0" width="393" height="852"/>
+              </imageView>
+              <imageView userInteractionEnabled="NO" contentMode="scaleAspectFit" image="NexoLaunchLogo" translatesAutoresizingMaskIntoConstraints="NO" id="nexo-launch-logo">
+                <rect key="frame" x="141.5" y="371" width="110" height="110"/>
+                <constraints>
+                  <constraint firstAttribute="width" constant="110" id="nexo-logo-width"/>
+                  <constraint firstAttribute="height" constant="110" id="nexo-logo-height"/>
+                </constraints>
+              </imageView>
+            </subviews>
+            <color key="backgroundColor" red="0.141" green="0.075" blue="0.271" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+            <constraints>
+              <constraint firstItem="nexo-launch-bg" firstAttribute="leading" secondItem="nexo-launch-root" secondAttribute="leading" id="nexo-bg-leading"/>
+              <constraint firstItem="nexo-launch-bg" firstAttribute="trailing" secondItem="nexo-launch-root" secondAttribute="trailing" id="nexo-bg-trailing"/>
+              <constraint firstItem="nexo-launch-bg" firstAttribute="top" secondItem="nexo-launch-root" secondAttribute="top" id="nexo-bg-top"/>
+              <constraint firstItem="nexo-launch-bg" firstAttribute="bottom" secondItem="nexo-launch-root" secondAttribute="bottom" id="nexo-bg-bottom"/>
+              <constraint firstItem="nexo-launch-logo" firstAttribute="centerX" secondItem="nexo-launch-root" secondAttribute="centerX" id="nexo-logo-x"/>
+              <constraint firstItem="nexo-launch-logo" firstAttribute="centerY" secondItem="nexo-launch-root" secondAttribute="centerY" id="nexo-logo-y"/>
+            </constraints>
+          </view>
+        </viewController>
+        <placeholder placeholderIdentifier="IBFirstResponder" id="nexo-launch-responder" sceneMemberID="firstResponder"/>
+      </objects>
+    </scene>
+  </scenes>
+  <resources>
+    <image name="NexoLaunchBackdrop" width="64" height="172"/>
+    <image name="NexoLaunchLogo" width="140" height="140"/>
+  </resources>
+</document>

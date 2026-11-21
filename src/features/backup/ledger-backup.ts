@@ -1,11 +1,12 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const columns = {
-  accounts: ['id', 'name', 'kind', 'currency', 'openingMinor', 'openingDate', 'color', 'icon', 'note', 'isArchived', 'isCreditCard', 'budgetMinor', 'statementDay', 'paymentDay'],
+  accounts: ['id', 'name', 'kind', 'currency', 'openingMinor', 'openingDate', 'color', 'icon', 'note', 'isArchived', 'isCreditCard', 'budgetMinor', 'statementDay', 'paymentDay', 'cardProfile'],
   categories: ['id', 'name', 'emoji', 'kind', 'budgetMinor', 'budgetCurrency'],
   movements: ['id', 'accountId', 'kind', 'amountMinor', 'note', 'recordedAt', 'transactionDate',
-    'categoryId', 'transferGroup', 'excludedFromReports', 'excludedFromCashFlow'],
+    'categoryId', 'transferGroup', 'excludedFromReports', 'excludedFromCashFlow', 'feeOccurrence'],
 } as const;
+const legacyColumnCounts = { accounts: [12, 14], categories: [], movements: [11] } as const;
 const tables = ['accounts', 'categories', 'movements'] as const;
 
 type BackupValue = string | number | null;
@@ -26,7 +27,7 @@ export function parseLedgerBackup(value: unknown): LedgerBackup {
   const rows = value.rows as Record<string, unknown>;
   for (const table of tables) {
     const items = rows[table];
-    if (!Array.isArray(items) || items.some(row => !Array.isArray(row) || (row.length !== columns[table].length && !(table === 'accounts' && row.length === columns.accounts.length - 2)) ||
+    if (!Array.isArray(items) || items.some(row => !Array.isArray(row) || (row.length !== columns[table].length && !(legacyColumnCounts[table] as readonly number[]).includes(row.length)) ||
       !Number.isSafeInteger(row[0]) || row[0] <= 0 ||
       row.some(cell => cell !== null && typeof cell !== 'string' && !Number.isSafeInteger(cell)))) {
       throw new Error('Invalid backup rows');
@@ -35,7 +36,8 @@ export function parseLedgerBackup(value: unknown): LedgerBackup {
   const validated = rows as BackupRows;
   return { format: 'nexo-ledger', version: 1, rows: {
     ...validated,
-    accounts: validated.accounts.map(row => row.length === columns.accounts.length ? row : [...row, null, null]),
+    accounts: validated.accounts.map(row => [...row, ...Array<null>(columns.accounts.length - row.length).fill(null)]),
+    movements: validated.movements.map(row => [...row, ...Array<null>(columns.movements.length - row.length).fill(null)]),
   } };
 }
 

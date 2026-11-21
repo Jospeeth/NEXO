@@ -1,8 +1,8 @@
 import { useLanguage } from '../language/language';
 import { Text, TextInput, View } from 'react-native';
-import { currencies, type Currency } from '../../features/accounts/account';
+import { type Currency } from '../../features/accounts/account';
 import { radius, spacing, useTheme } from '../theme/theme';
-import { Pill } from './date-controls';
+import { CurrencyPicker } from '../../features/exchange/currency-picker';
 
 interface Props {
   value: string;
@@ -26,12 +26,7 @@ export function BudgetField({ value, currency, onChange, onCurrencyChange, incom
           minHeight: 44, color: colors.text, backgroundColor: colors.surfaceSubtle, borderWidth: 1,
           borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.md,
         }} />
-      {onCurrencyChange && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
-        {currencies.map(option => (
-          <Pill key={option} label={option} selected={option === currency}
-            onPress={() => { if (!disabled) onCurrencyChange(option); }} />
-        ))}
-      </View>}
+      {onCurrencyChange && <CurrencyPicker label={t('Moneda')} value={currency} onChange={onCurrencyChange} disabled={disabled} />}
     </View>
   );
 }

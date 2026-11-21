@@ -1,3 +1,4 @@
+import { isCalendarDate } from '../features/accounts/card-profile';
 import { useState } from 'react';
 import { TransferSheet } from '../features/transfers/transfer-sheet';
 import { useLanguage } from '../shared/language/language';
@@ -22,7 +23,9 @@ function EditMovement({ id, onDismiss }: { id: string; onDismiss: () => void }) 
 
 export default function AddRoute() {
   const router = useRouter();
-  const { edit, mode } = useLocalSearchParams<{ edit?: string; mode?: string }>();
+  const { edit, mode, accountId, amountMinor, occurrence, currency } = useLocalSearchParams<{
+    edit?: string; mode?: string; accountId?: string; amountMinor?: string; occurrence?: string; currency?: string;
+  }>();
   const [transfer, setTransfer] = useState(mode === 'transfer');
 
   function dismiss() {
@@ -30,6 +33,13 @@ export default function AddRoute() {
     else router.replace('/');
   }
 
+  if (mode === 'management-fee' && occurrence && isCalendarDate(occurrence) && currency && /^[A-Z]{3}$/.test(currency)) {
+    const id = Number(accountId);
+    const minor = Number(amountMinor);
+    if (Number.isSafeInteger(id) && id > 0 && Number.isSafeInteger(minor) && minor > 0) {
+      return <AddTransactionSheet feeDraft={{ accountId: id, amountMinor: minor, occurrence, currency }} onDismiss={dismiss} />;
+    }
+  }
   if (edit) return <EditMovement id={edit} onDismiss={dismiss} />;
   if (transfer) return <TransferSheet onDismiss={dismiss} onBack={() => setTransfer(false)} />;
   return <AddTransactionSheet onDismiss={dismiss} onTransfer={() => setTransfer(true)} />;

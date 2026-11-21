@@ -1,3 +1,6 @@
+import { MetallicSheen } from '../../features/accounts/metallic-sheen';
+import { metallicFinishes, readCardProfile } from '../../features/accounts/card-profile';
+import { InstitutionMark } from '../../features/accounts/institution-mark';
 import { useLanguage } from '../language/language';
 import { accountColorGradient, normalizeAccountColor } from '../../features/accounts/account-color';
 import React from 'react';
@@ -11,7 +14,8 @@ interface AccountCardProps {
   onPress?: () => void;
   variant?: 'hero' | 'carousel' | 'compact';
   style?: StyleProp<ViewStyle>;
-  period?: { balanceMinor: number | null; budgetSpent: number; historical: boolean };
+  equivalent?: string;
+  period?: { balanceMinor: number | null };
 }
 
 export function AccountCard({
@@ -20,6 +24,7 @@ export function AccountCard({
   variant = 'carousel',
   style,
   period,
+  equivalent,
 }: AccountCardProps) {
   const { t } = useLanguage();
   const { colors, isDark } = useTheme();
@@ -30,12 +35,12 @@ export function AccountCard({
   });
 
   const custom = normalizeAccountColor(account.color ?? '');
-  const gradient = custom ? accountColorGradient(custom) : [colors.cardGradientStart, colors.cardGradientEnd] as const;
+  const profile = readCardProfile(account.cardProfile);
+  const finish = profile.finish ? metallicFinishes[profile.finish] : null;
+  const gradient = finish ? [finish[2], finish[3], finish[2]] as const
+    : custom ? accountColorGradient(custom) : [colors.cardGradientStart, colors.cardGradientEnd] as const;
+  const institution = profile.institution;
   const kindLabel = t(accountKinds[account.kind] ?? account.kind);
-
-  const budgetLabel = account.kind === 'credit_card' && account.budgetMinor != null
-    ? `${t(period?.historical ? "Gasto del período · Límite vigente" : "Gastado este mes")}: ${displayBalance({ currency: account.currency, openingMinor: period?.budgetSpent ?? account.monthSpentMinor ?? 0 })} / ${displayBalance({ currency: account.currency, openingMinor: account.budgetMinor })}`
-    : null;
 
   if (variant === 'compact') {
     return (
@@ -56,13 +61,15 @@ export function AccountCard({
       >
         <LinearGradient colors={gradient} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }}
           style={{ padding: spacing.md, gap: spacing.xs }}>
+          {finish && <MetallicSheen />}
           <View style={styles.compactHeader}>
-            <View style={[styles.compactDot, styles.whiteDot]} />
-            <Text style={[styles.compactKind, styles.whiteText]} numberOfLines={1}>{kindLabel}</Text>
+            {institution ? <InstitutionMark name={institution} size={24} /> : <View style={[styles.compactDot, styles.whiteDot]} />}
+            <Text style={[styles.compactKind, styles.whiteText]} numberOfLines={1}>{institution ? institution : kindLabel}</Text>
           </View>
           <Text style={[styles.compactName, styles.whiteText]} numberOfLines={1}>{account.name}</Text>
           <Text style={[styles.compactBalance, styles.whiteText]}>{formattedBalance}</Text>
-          {budgetLabel && <Text style={styles.whiteText}>{budgetLabel}</Text>}
+          {profile.lastFour && <Text style={styles.whiteText}>•••• {profile.lastFour}</Text>}
+          {equivalent && !equivalent.startsWith('—') && <Text style={styles.whiteText}>≈ {equivalent}</Text>}
         </LinearGradient>
       </Pressable>
     );
@@ -94,6 +101,7 @@ export function AccountCard({
           },
         ]}
       >
+        {finish && <MetallicSheen />}
         {/* Top bar with badge */}
         <View style={styles.headerRow}>
           <Text style={[styles.accountName, styles.whiteText]} numberOfLines={1}>
@@ -104,6 +112,10 @@ export function AccountCard({
           </View>
         </View>
 
+        {institution && <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }}>
+          <InstitutionMark name={institution} size={28} />
+          <Text style={[styles.badgeText, styles.whiteText]} numberOfLines={1}>{institution}</Text>
+        </View>}
         {/* Center balance */}
         <View style={styles.balanceContainer}>
           <Text style={[styles.balanceLabel, styles.whiteText]}>{t("Saldo disponible")}</Text>
@@ -120,12 +132,11 @@ export function AccountCard({
           </Text>
         </View>
 
-        {budgetLabel && <Text style={styles.whiteText}>{budgetLabel}</Text>}
 
         {/* Bottom footer / currency */}
         <View style={styles.footerRow}>
           <Text style={[styles.currencyCode, styles.whiteText]}>{account.currency}</Text>
-          <Text style={[styles.footerHint, styles.whiteText]}>NEXO Finance</Text>
+          <Text style={[styles.footerHint, styles.whiteText]}>{profile.lastFour ? `•••• ${profile.lastFour}` : 'NEXO Finance'}</Text>
         </View>
       </LinearGradient>
     </Pressable>

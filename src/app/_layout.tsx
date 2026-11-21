@@ -1,3 +1,4 @@
+import { StartupSplash, useStartupPending } from '../features/launch/startup-splash';
 import { useEffect } from 'react';
 import { startAutomaticBackups } from '../features/backup/automatic-backup';
 import { LanguageProvider } from '../shared/language/language';
@@ -17,6 +18,7 @@ export default function Layout() {
 
 function AppNavigation() {
   const { colors, isDark } = useTheme();
+  const startupPending = useStartupPending();
   const baseTheme = isDark ? DarkTheme : DefaultTheme;
   const theme = {
     ...baseTheme,
@@ -32,7 +34,7 @@ function AppNavigation() {
 
   return (
     <ThemeProvider value={theme}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle={startupPending || isDark ? 'light-content' : 'dark-content'} />
       <Stack
         screenOptions={{
           headerShown: false,
@@ -51,6 +53,7 @@ function AppNavigation() {
           }}
         />
       </Stack>
+      {startupPending && <StartupSplash />}
     </ThemeProvider>
   );
 }

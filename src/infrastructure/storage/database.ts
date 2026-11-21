@@ -7,6 +7,8 @@ import { thirdMigration } from './migration-v3';
 import { sixthMigration } from './migration-v6';
 import { fifthMigration } from './migration-v5';
 import { fourthMigration } from './migration-v4';
+import { ninthMigration } from './migration-v9';
+import { eighthMigration } from './migration-v8';
 import { seventhMigration } from './migration-v7';
 import { unlock } from './unlock';
 
@@ -39,10 +41,10 @@ async function initialize() {
     const row = await db.getFirstAsync<{user_version: number}>('PRAGMA user_version');
     await db.execAsync('PRAGMA foreign_keys = ON');
     const version = row?.user_version;
-    if (version === undefined || version < 0 || version > 7) {
+    if (version === undefined || version < 0 || version > 9) {
       throw new Error('Unsupported schema');
     }
-    if (version < 7) {
+    if (version < 9) {
       await db.withTransactionAsync(async () => {
         if (version === 0) await db.execAsync(firstMigration);
         if (version <= 1) await db.execAsync(secondMigration);
@@ -50,7 +52,9 @@ async function initialize() {
         if (version <= 3) await db.execAsync(fourthMigration);
         if (version <= 4) await db.execAsync(fifthMigration);
         if (version <= 5) await db.execAsync(sixthMigration);
-        await db.execAsync(seventhMigration);
+        if (version <= 6) await db.execAsync(seventhMigration);
+        if (version <= 7) await db.execAsync(eighthMigration);
+        await db.execAsync(ninthMigration);
       });
     }
     return db;

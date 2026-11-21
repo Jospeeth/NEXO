@@ -1,96 +1,98 @@
 import { fetch } from 'expo/fetch';
+import { File, Paths } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
-import { bogotaSlot, isQuote, parseRate, type ExchangeQuote } from './rate';
+import { localDay } from '../../shared/date/local-day';
+import { defaultCurrencies, isCurrencyCode, parseCatalog, parseRates, type CurrencyEntry, type ExchangeQuote } from './rate';
 
-const keyName = 'nexo.exchange.apilayer.key';
-const slotName = 'nexo.exchange.apilayer.slot';
-const quoteName = 'nexo.exchange.apilayer.quote';
+const endpoint = 'https://api.frankfurter.dev/v2';
+const primaryKey = 'nexo.exchange.currency';
+const preferencesKey = 'nexo.exchange.preferences.v2';
 const options = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
+const cacheAge = 6 * 60 * 60 * 1000;
+const pending = new Map<string, Promise<unknown>>();
+const retryAfter = new Map<string, number>();
 
-export async function saveExchangeKey(key: string) {
-  await SecureStore.setItemAsync(keyName, key.trim(), options);
+function cacheFile(name: string) {
+  return new File(Paths.document, `nexo-frankfurter-${name}.json`);
 }
 
-export async function readQuote(): Promise<ExchangeQuote | null> {
-  const saved = await SecureStore.getItemAsync(quoteName);
-  if (!saved) return null;
+async function cached<T>(name: string): Promise<T | null> {
   try {
-    const value: unknown = JSON.parse(saved);
-    return isQuote(value) ? value : null;
+    const file = cacheFile(name);
+    return file.exists ? JSON.parse(await file.text()) as T : null;
   } catch {
     return null;
   }
 }
 
-export type RateStatus = 'updated' | 'unconfigured' | 'scheduled' | 'failed';
-let pending: Promise<RateStatus> | undefined;
-
-async function requestIfDue(): Promise<RateStatus> {
-  const key = await SecureStore.getItemAsync(keyName);
-  if (!key) return 'unconfigured';
-  const slot = bogotaSlot(Date.now());
-  const previous = await SecureStore.getItemAsync(slotName);
-  if (previous !== null && Number(previous) >= slot) return 'scheduled';
-
-  // Reserve before sending. Failed or interrupted requests can still use quota.
-  await SecureStore.setItemAsync(slotName, String(slot), options);
-  const url = new URL('https://api.exchangeratesapi.io/v1/latest');
-  url.searchParams.set('access_key', key);
-  url.searchParams.set('symbols', 'USD,COP');
+async function request(path: string) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+  const deadline = setTimeout(() => controller.abort(), 12_000);
   try {
-    const response = await fetch(url.toString(), { signal: controller.signal, redirect: 'error' });
-    if (!response.ok) return 'failed';
-    const quote = parseRate(await response.json(), Date.now());
-    const cached = await readQuote();
-    if (!cached || quote.quotedAt >= cached.quotedAt) {
-      await SecureStore.setItemAsync(quoteName, JSON.stringify(quote), options);
-    }
-    return 'updated';
-  } catch {
-    return 'failed';
+    const response = await fetch(endpoint + path, { signal: controller.signal });
+    if (!response.ok) throw new Error('Frankfurter unavailable');
+    return await response.json() as unknown;
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(deadline);
   }
 }
 
-export function refreshExchangeRate() {
-  pending ??= requestIfDue().catch((): RateStatus => 'failed').finally(() => { pending = undefined; });
-  return pending;
-}
-
-const manualName = 'nexo.exchange.manual';
-const currencyName = 'nexo.exchange.currency';
-
-export async function readExchangeSettings() {
-  const [provider, rawManual, currency, key] = await Promise.all([
-    readQuote(), SecureStore.getItemAsync(manualName),
-    SecureStore.getItemAsync(currencyName), SecureStore.getItemAsync(keyName),
-  ]);
-  let manual: ExchangeQuote | null = null;
-  if (rawManual) {
-    try {
-      const parsed: unknown = JSON.parse(rawManual);
-      if (isQuote(parsed)) manual = parsed;
-    } catch {
-      // A malformed preference does not prevent use of the provider cache.
-    }
+async function cachedRequest<T>(name: string, update: () => Promise<T>, force = false, historical = false) {
+  const stored = await cached<{ value: T; savedAt: number }>(name);
+  if (!force && stored && (historical || Date.now() - stored.savedAt < cacheAge)) {
+    return { value: stored.value, offline: false };
   }
-  const primaryCurrency: 'USD' | 'COP' | null = currency === 'USD' || currency === 'COP' ? currency : null;
-  return { quote: manual ?? provider, manual: manual !== null, currency: primaryCurrency, hasKey: Boolean(key) };
-}
+  if (!force && (retryAfter.get(name) ?? 0) > Date.now()) return { value: stored?.value ?? null, offline: true };
 
-export async function saveManualRate(rate: number | null) {
-  if (rate === null) {
-    await SecureStore.deleteItemAsync(manualName, options);
-    return;
+  let active = pending.get(name);
+  if (!active) {
+    active = update().then(async value => {
+      try {
+        const file = cacheFile(name);
+        file.create({ overwrite: true });
+        await file.write(JSON.stringify({ value, savedAt: Date.now() }));
+      } catch {
+        // Keep the successful result available for this session.
+      }
+      retryAfter.delete(name);
+      return value;
+    }).catch(error => {
+      retryAfter.set(name, Date.now() + 60_000);
+      throw error;
+    }).finally(() => pending.delete(name));
+    pending.set(name, active);
   }
-  const quote = { copPerUsd: rate, quotedAt: Date.now() };
-  if (!isQuote(quote)) throw new Error('invalid manual rate');
-  await SecureStore.setItemAsync(manualName, JSON.stringify(quote), options);
+  try {
+    return { value: await active as T, offline: false };
+  } catch {
+    return { value: stored?.value ?? null, offline: true };
+  }
 }
 
-export function savePrimaryCurrency(currency: 'USD' | 'COP') {
-  return SecureStore.setItemAsync(currencyName, currency, options);
+export function readRates(date?: string, force = false) {
+  return cachedRequest<ExchangeQuote>(date ?? 'latest', async () => {
+    const payload = await request('/rates?base=USD' + (date ? '&date=' + encodeURIComponent(date) : ''));
+    return parseRates(payload, Date.now(), date ?? localDay());
+  }, force, !!date);
+}
+
+export async function readCatalog() {
+  const result = await cachedRequest<CurrencyEntry[]>('catalog', async () => parseCatalog(await request('/currencies')));
+  return { ...result, value: result.value ?? defaultCurrencies };
+}
+
+export async function readCurrencyPreferences() {
+  const [legacy, raw] = await Promise.all([SecureStore.getItemAsync(primaryKey), SecureStore.getItemAsync(preferencesKey)]);
+  let stored: { currency?: unknown; preferred?: unknown } | undefined;
+  try { if (raw) stored = JSON.parse(raw); } catch { /* Fall back to the existing preference. */ }
+  const currency = isCurrencyCode(stored?.currency) ? stored.currency : isCurrencyCode(legacy) ? legacy : 'COP';
+  const parsed = stored?.preferred ?? ['USD', 'EUR', 'COP'];
+  const preferred = Array.isArray(parsed) ? [...new Set(parsed.filter(isCurrencyCode))].filter(code => code !== currency).slice(0, 3) : [];
+  return { currency, preferred };
+}
+
+export async function saveCurrencyPreferences(currency: string, preferred: string[]) {
+  if (!isCurrencyCode(currency) || preferred.length > 3 || preferred.some(code => !isCurrencyCode(code) || code === currency) ||
+      new Set(preferred).size !== preferred.length) throw new Error('Invalid currency preferences');
+  await SecureStore.setItemAsync(preferencesKey, JSON.stringify({ currency, preferred }), options);
 }

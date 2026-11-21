@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { consolidatedBalance } from '../src/features/dashboard/consolidated-balance.ts';
 
-const quote = { copPerUsd: 4000, quotedAt: 1 };
+const quote = { rates: { COP: { rate: 4000, date: '2026-11-18' } }, fetchedAt: 1 };
 const accounts = [
   { currency: 'USD', balanceMinor: 10000 },
   { currency: 'COP', balanceMinor: 20000000 },
@@ -21,4 +21,12 @@ test('requiere una tasa cuando hay conversión y detecta monedas sin cobertura',
   assert.equal(consolidatedBalance([{ currency: 'EUR', balanceMinor: 500 }], 'COP', quote).kind, 'unsupported-currency');
   assert.deepEqual(consolidatedBalance([{ currency: 'COP', balanceMinor: 500 }], 'COP', null),
     { kind: 'available', minor: 500, usedQuote: false });
+});
+
+test('redondea el total multimoneda una sola vez y simétricamente para deudas', () => {
+  const rates = { fetchedAt: 1, rates: { EUR: { rate: 0.8 }, GBP: { rate: 0.5 }, COP: { rate: 4000 } } };
+  assert.equal(consolidatedBalance([{ currency: 'EUR', balanceMinor: 100 }, { currency: 'GBP', balanceMinor: 100 }],
+    'COP', rates).minor, 1300000);
+  assert.equal(consolidatedBalance([{ currency: 'EUR', balanceMinor: -2 }],
+    'USD', rates).minor, -3);
 });

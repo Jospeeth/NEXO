@@ -1,3 +1,5 @@
+import { InstitutionMark } from '../accounts/institution-mark';
+import { readCardProfile } from '../accounts/card-profile';
 import { cardCycleDates } from '../accounts/card-cycle';
 import { InstallmentPreview } from '../installments/installment-preview';
 import { useLanguage } from '../../shared/language/language';
@@ -30,6 +32,7 @@ interface AddTransactionSheetProps {
   onSuccess?: () => void;
   initial?: Movement;
   onTransfer?: () => void;
+  feeDraft?: { accountId: number; amountMinor: number; occurrence: string; currency: string };
 }
 
 export function AddTransactionSheet({
@@ -37,22 +40,24 @@ export function AddTransactionSheet({
   onSuccess,
   initial,
   onTransfer,
+  feeDraft,
 }: AddTransactionSheetProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const { colors } = useTheme();
+  const fixedFeeAccountId = feeDraft?.accountId ?? (initial?.feeOccurrence ? initial.accountId : undefined);
 
   // 1. Type: Income or Expense
   const [kind, setKind] = useState<MovementKind>(initial?.kind ?? 'expense');
 
   // 2. Amount: Visual Protagonist
-  const [amountText, setAmountText] = useState(initial ? String(initial.amountMinor / 100) : '');
+  const [amountText, setAmountText] = useState(initial ? String(initial.amountMinor / 100) : feeDraft ? String(feeDraft.amountMinor / 100) : '');
 
   // 3. Description (optional)
-  const [description, setDescription] = useState(initial?.note ?? '');
+  const [description, setDescription] = useState(initial?.note ?? (feeDraft ? t('Cuota de manejo') : ''));
 
   // 4. Account (mandatory)
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(initial?.accountId ?? null);
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(initial?.accountId ?? feeDraft?.accountId ?? null);
 
   // Quick account creation inside sheet if user has no accounts
   const [creatingQuickAccount, setCreatingQuickAccount] = useState(false);
@@ -81,9 +86,9 @@ export function AddTransactionSheet({
           loadCategories(),
         ]);
         if (mounted) {
-          setAccounts(accs);
+          setAccounts(fixedFeeAccountId ? accs.filter(account => account.id === fixedFeeAccountId) : accs);
           if (accs.length > 0 && accs[0]) {
-            setSelectedAccountId(initial?.accountId ?? accs[0].id);
+            setSelectedAccountId(initial?.accountId ?? feeDraft?.accountId ?? accs[0].id);
           }
           setCategories(cats);
         }
@@ -95,11 +100,16 @@ export function AddTransactionSheet({
     }
     void loadData();
     return () => { mounted = false; };
-  }, [initial?.accountId, loadAttempt]);
+  }, [feeDraft?.accountId, fixedFeeAccountId, initial?.accountId, loadAttempt]);
 
   const selectedAccount = accounts.find(a => a.id === selectedAccountId);
+  const amountCurrency = selectedAccount?.currency;
+  const amountSymbol = amountCurrency ? new Intl.NumberFormat(locale, {
+    style: 'currency', currency: amountCurrency, currencyDisplay: 'narrowSymbol',
+  }).formatToParts(0).find(part => part.type === 'currency')?.value ?? amountCurrency : '$';
   const principal = parseOpening(amountText) ?? 0;
-  const showInstallments = kind === 'expense' && selectedAccount?.kind === 'credit_card';
+  const saveLabel = t(initial ? "Guardar cambios" : feeDraft ? "Confirmar y registrar gasto" : kind === "income" ? "Añadir ingreso" : "Añadir gasto");
+  const showInstallments = !fixedFeeAccountId && kind === 'expense' && selectedAccount?.kind === 'credit_card';
   const filteredCategories = categories.filter(c => c.kind === kind || c.kind === 'both');
 
   async function handleQuickCreateAccount() {
@@ -139,6 +149,10 @@ export function AddTransactionSheet({
       return;
     }
 
+    if (feeDraft && (selectedAccount.kind !== 'credit_card' || selectedAccount.currency !== feeDraft.currency)) {
+      setError(t('La tarjeta o su moneda cambió. Abre el cobro de nuevo desde Cuentas.'));
+      return;
+    }
     const originalAccount = accounts.find(account => account.id === initial?.accountId);
     if (originalAccount && selectedAccount.currency !== originalAccount.currency) {
       setError(t("Elige una cuenta con la misma moneda que el movimiento original."));
@@ -155,13 +169,19 @@ export function AddTransactionSheet({
         note: description.trim(),
         categoryId: selectedCategoryId,
         transactionDate,
+        feeOccurrence: feeDraft?.occurrence,
       };
       if (initial) await updateMovement(initial.id, selectedAccountId, input);
       else await recordMovement(selectedAccountId, input);
 
       onSuccess?.();
       onDismiss();
-    } catch {
+    } catch (error) {
+      if (feeDraft && /unique constraint/i.test(String(error))) {
+        setError(t('Este cobro ya se registró.'));
+        setSaving(false);
+        return;
+      }
       setError(t("Error al guardar el movimiento. Por favor inténtalo de nuevo."));
       setSaving(false);
     }
@@ -183,7 +203,7 @@ export function AddTransactionSheet({
             <View style={[styles.handleBar, { backgroundColor: colors.border }]} />
             <View style={styles.titleRow}>
               <Text style={[styles.sheetTitle, { color: colors.text }]}>
-                {initial ? t("Editar transacción") : t("Nueva transacción")}
+                {t(initial ? "Editar transacción" : feeDraft ? "Cuota de manejo" : "Nueva transacción")}
               </Text>
               <Pressable
                 onPress={onDismiss}
@@ -235,6 +255,7 @@ export function AddTransactionSheet({
                 </Pressable>
 
                 <Pressable
+                  disabled={!!fixedFeeAccountId}
                   onPress={() => { if (kind !== 'income') setSelectedCategoryId(null); setKind('income'); }}
                   style={[
                     styles.segmentItem,
@@ -259,11 +280,11 @@ export function AddTransactionSheet({
               {/* STEP 2: Amount (PROTAGONIST VISUAL) */}
               <View style={[styles.amountCard, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
                 <Text style={[styles.amountLabel, { color: colors.secondaryText }]}>
-                  {t("IMPORTE ·")} {selectedAccount?.currency ?? 'USD / COP'}
+                  {t("IMPORTE ·")} {amountCurrency ?? '—'}
                 </Text>
                 <View style={styles.amountInputRow}>
                   <Text style={[styles.currencyPrefix, { color: kind === 'income' ? colors.income : colors.expense }]}>
-                    {kind === 'income' ? '+$' : '−$'}
+                    {kind === 'income' ? '+' : '−'}{amountSymbol}
                   </Text>
                   <TextInput
                     style={[
@@ -362,6 +383,7 @@ export function AddTransactionSheet({
                   >
                     {accounts.map(account => {
                       const isSelected = account.id === selectedAccountId;
+                      const institution = readCardProfile(account.cardProfile).institution;
                       return (
                         <Pressable
                           key={account.id}
@@ -379,15 +401,18 @@ export function AddTransactionSheet({
                           accessibilityRole="radio"
                           accessibilityState={{ checked: isSelected }}
                         >
-                          <Text
-                            style={[
-                              styles.accountPillName,
-                              { color: isSelected ? colors.onPrimary : colors.text },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {account.name}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                            {institution && <InstitutionMark name={institution} size={23} />}
+                            <Text
+                              style={[
+                                styles.accountPillName,
+                                { color: isSelected ? colors.onPrimary : colors.text },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {account.name}
+                            </Text>
+                          </View>
                           <Text
                             style={[
                               styles.accountPillCurrency,
@@ -410,6 +435,8 @@ export function AddTransactionSheet({
                   {principal <= 0 && <Text style={{ color: colors.secondaryText }}>{t('Ingresa el importe para simular las cuotas.')}</Text>}
                   {preview && <InstallmentPreview principal={principal} currency={selectedAccount.currency}
                     purchaseDate={transactionDate}
+                    preferredInstallments={readCardProfile(selectedAccount.cardProfile).installments}
+                    monthlyInterest={readCardProfile(selectedAccount.cardProfile).interestPercent}
                     firstDueDate={selectedAccount.statementDay && selectedAccount.paymentDay
                       ? cardCycleDates(transactionDate, selectedAccount.statementDay, selectedAccount.paymentDay).payment : undefined}
                     onClose={() => setPreview(false)} />}
@@ -511,13 +538,13 @@ export function AddTransactionSheet({
                     },
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel={initial ? t("Guardar cambios") : kind === "income" ? t("Añadir ingreso") : t("Añadir gasto")}
+                  accessibilityLabel={saveLabel}
                 >
                   {saving ? (
                     <ActivityIndicator size="small" color={colors.onPrimary} />
                   ) : (
                     <Text style={[styles.saveButtonText, { color: colors.onPrimary }]}>
-                      {initial ? t("Guardar cambios") : kind === "income" ? t("Añadir ingreso") : t("Añadir gasto")}
+                      {saveLabel}
                     </Text>
                   )}
                 </Pressable>

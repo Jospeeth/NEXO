@@ -1,5 +1,5 @@
 export const currencies = ['COP', 'USD', 'EUR'] as const;
-export type Currency = (typeof currencies)[number];
+export type Currency = string;
 export interface Account {
   currency: Currency;
   openingMinor: number;
@@ -34,6 +34,7 @@ export interface AccountDetails extends Account {
   budgetMinor?: number | null;
   statementDay?: number | null;
   paymentDay?: number | null;
+  cardProfile?: string | null;
   color?: string | null;
   name: string;
   kind: AccountKind;

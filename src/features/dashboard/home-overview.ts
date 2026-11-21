@@ -78,8 +78,5 @@ export type HomeOverview = ReturnType<typeof homeOverview>;
 
 export function homeMoney(value: Value | undefined, currency: ConsolidatedCurrency, locale: string) {
   if (value?.kind !== 'available') return '—';
-  return new Intl.NumberFormat(locale, {
-    style: 'currency', currency, currencyDisplay: 'narrowSymbol',
-    minimumFractionDigits: currency === 'USD' ? 2 : 0, maximumFractionDigits: 2,
-  }).format(value.minor / 100);
+  return new Intl.NumberFormat(locale, { style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).format(value.minor / 100);
 }

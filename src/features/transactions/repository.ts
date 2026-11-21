@@ -10,6 +10,7 @@ export interface MovementInput {
   amountMinor: number;
   note: string;
   categoryId?: number | null;
+  feeOccurrence?: string;
   transactionDate?: string; // ISO date string YYYY-MM-DD, defaults to today
 }
 
@@ -25,6 +26,7 @@ export interface Movement {
   transactionDate: string;
   recordedAt: string;
   transferGroup?: string | null;
+  feeOccurrence?: string | null;
   excludedFromReports?: number;
   excludedFromCashFlow?: number;
 }
@@ -35,7 +37,7 @@ export async function loadAllMovements(): Promise<Movement[]> {
     SELECT m.id, m.accountId, m.kind, m.amountMinor, m.note,
            m.categoryId, c.name AS categoryName, c.emoji AS categoryEmoji,
            COALESCE(m.transactionDate, date(m.recordedAt, 'localtime')) AS transactionDate, m.recordedAt,
-           m.transferGroup, m.excludedFromReports, m.excludedFromCashFlow
+           m.transferGroup, m.feeOccurrence, m.excludedFromReports, m.excludedFromCashFlow
     FROM movements m
     LEFT JOIN categories c ON c.id = m.categoryId
     ORDER BY transactionDate DESC, m.id DESC
@@ -48,7 +50,7 @@ export async function loadMovements(accountId: number): Promise<Movement[]> {
     SELECT m.id, m.accountId, m.kind, m.amountMinor, m.note,
            m.categoryId, c.name AS categoryName, c.emoji AS categoryEmoji,
            COALESCE(m.transactionDate, date(m.recordedAt, 'localtime')) AS transactionDate, m.recordedAt,
-           m.transferGroup, m.excludedFromReports, m.excludedFromCashFlow
+           m.transferGroup, m.feeOccurrence, m.excludedFromReports, m.excludedFromCashFlow
     FROM movements m
     LEFT JOIN categories c ON c.id = m.categoryId
     WHERE m.accountId = ?
@@ -62,7 +64,7 @@ export async function loadRecentMovements(limit: number = 10): Promise<Movement[
     SELECT m.id, m.accountId, m.kind, m.amountMinor, m.note,
            m.categoryId, c.name AS categoryName, c.emoji AS categoryEmoji,
            COALESCE(m.transactionDate, date(m.recordedAt, 'localtime')) AS transactionDate, m.recordedAt,
-           m.transferGroup, m.excludedFromReports, m.excludedFromCashFlow
+           m.transferGroup, m.feeOccurrence, m.excludedFromReports, m.excludedFromCashFlow
     FROM movements m
     LEFT JOIN categories c ON c.id = m.categoryId
     ORDER BY transactionDate DESC, m.id DESC
@@ -89,10 +91,10 @@ export async function recordMovement(accountId: number, movement: MovementInput)
   const recordedAt = new Date().toISOString();
   const txDate = movement.transactionDate ?? null;
   await (await database()).runAsync(
-    `INSERT INTO movements(accountId, kind, amountMinor, note, categoryId, recordedAt, transactionDate)
-     VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date(?, 'localtime')))`,
+    `INSERT INTO movements(accountId, kind, amountMinor, note, categoryId, recordedAt, transactionDate, feeOccurrence)
+     VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date(?, 'localtime')), ?)`,
     accountId, movement.kind, movement.amountMinor, movement.note.trim(),
-    movement.categoryId ?? null, recordedAt, txDate, recordedAt
+    movement.categoryId ?? null, recordedAt, txDate, recordedAt, movement.feeOccurrence ?? null
   );
 }
 
@@ -101,9 +103,9 @@ export { type NO_CATEGORY_EMOJI, type NO_CATEGORY_NAME };
 
 export async function updateMovement(id: number, accountId: number, movement: MovementInput): Promise<void> {
   const result = await (await database()).runAsync(
-    'UPDATE movements SET accountId = ?, kind = ?, amountMinor = ?, note = ?, categoryId = ?, transactionDate = COALESCE(?, transactionDate) WHERE id = ? AND transferGroup IS NULL',
+    `UPDATE movements SET accountId = ?, kind = ?, amountMinor = ?, note = ?, categoryId = ?, transactionDate = COALESCE(?, transactionDate) WHERE id = ? AND transferGroup IS NULL AND (feeOccurrence IS NULL OR (accountId = ? AND ? = 'expense'))`,
     accountId, movement.kind, movement.amountMinor, movement.note.trim(), movement.categoryId ?? null,
-    movement.transactionDate ?? null, id
+    movement.transactionDate ?? null, id, accountId, movement.kind
   );
   if (result.changes !== 1) throw new Error('Movement not found');
 }
@@ -125,7 +127,7 @@ export async function loadMovementsForExport() {
     SELECT m.id, m.accountId, a.name AS accountName, CASE WHEN a.isCreditCard = 1 THEN 'credit_card' ELSE a.kind END AS accountKind, a.currency,
            m.kind, m.amountMinor, c.name AS categoryName, m.note,
            COALESCE(m.transactionDate, date(m.recordedAt, 'localtime')) AS transactionDate,
-           m.recordedAt, m.transferGroup, m.excludedFromReports, m.excludedFromCashFlow
+           m.recordedAt, m.transferGroup, m.feeOccurrence, m.excludedFromReports, m.excludedFromCashFlow
     FROM movements m
     JOIN accounts a ON a.id = m.accountId
     LEFT JOIN categories c ON c.id = m.categoryId
